@@ -1,0 +1,9 @@
+#!/usr/bin/env xdg-open
+
+[Desktop Entry]
+Version=1.0
+Type=Link
+Icon[de_CH]=gnome-panel-launcher
+URL=http://docs.racket-lang.org/redex/tutorial.html
+Name[de_CH]=Racket_AmbRedexTutorial
+Name=Racket_AmbRedexTutorial

@@ -1,0 +1,11 @@
+----------------------------------------------------------------
+Luca Cardelli, Peter Wegner, On understanding types, data 
+abstraction, and polymorphism, ACM Computing Surveys (CSUR), 
+v.17 n.4, p.471-523, Dec. 1985
+----------------------------------------------------------------
+
+Notes:
+
+develops theoretical language "Fun", basis of generic Java
+
+

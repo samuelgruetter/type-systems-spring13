@@ -1,0 +1,11 @@
+----------------------------------------------------------------
+John McCarthy. A basis for a mathematical theory of computation,
+1963, Computer Programming and Formal Systems, North-Holland.
+----------------------------------------------------------------
+
+Notes:
+
+Section 2.5 explains what amb is.
+
+
+

@@ -1,0 +1,386 @@
+\documentclass[12pt, draft]{article}
+
+\usepackage[margin=2cm]{geometry}
+\usepackage{mathpartir}
+\usepackage{lastpage}
+
+%\usepackage{courier}
+
+% on ubuntu:
+% sudo apt-get install texlive-fonts-extra
+% but does not work on lucid
+%\usepackage{dejavu}
+%\usepackage{DejaVuSansMono}
+
+% Attention! Many monospace fonts do not support < and > !
+%\usepackage{inconsolata}
+
+% cmtt supports < and >
+\usepackage{cmtt}
+
+% [final] because with draft, listings don't work
+\usepackage[final]{listings}
+
+\usepackage{fancyhdr} \pagestyle{fancy}
+\renewcommand{\headrulewidth}{0.5pt} 
+%\renewcommand{\headheight}{15pt}
+\renewcommand{\footrulewidth}{0.5pt} \fancyhf{}
+
+\fancyhead[L]{Semester Project Idea: A Toy Structurally Typed Language}
+\fancyhead[R]{Samuel Gr\"utter}
+\fancyfoot[L]{\today}
+\fancyfoot[R]{Page \thepage\ of \pageref{LastPage}}
+
+\fancypagestyle{plain} {
+   \fancyhead[L]{}
+   \fancyhead[R]{}
+   \fancyfoot[L]{\today}
+   \fancyfoot[R]{Page \thepage\ of \pageref{LastPage}}
+}
+
+%\lstset{basicstyle=\footnotesize\ttfamily,breaklines=true}
+\lstset{basicstyle=\small\ttfamily,breaklines=false}
+
+% plain text
+\lstset{language=}
+
+%top left right bottom
+\lstset{frame=tlrb}
+
+%uncomment if < and > disappear because not supported by the font
+%\lstset{  literate={<}{\textless}1 {>}{\textgreater}1 }
+
+\title{Semester Project Idea: A Toy Structurally Typed Language}
+\author{Samuel Gr\"utter}
+\date{}
+
+\begin{document}
+
+%\part{part}	-1	not in letters
+%\chapter{chapter}	0	only books and reports
+%\section{section}	1	not in letters
+%\subsection{subsection}	2	not in letters
+%\subsubsection{subsubsection}	3	not in letters
+%\paragraph{paragraph}	4	not in letters
+%\subparagraph{subparagraph}	5	not in letters
+
+%\thispagestyle{firststyle}
+
+\maketitle
+\parindent=0pt
+
+This document is an outline of what I would like to do as a semester project. 
+The project would consist of two phases:
+\begin{itemize}
+\item Phase I: Defining and implementing a basic structurally typed programming language which is as simple as possible.
+\item Phase II: Trying out different extensions, implementing them if possible, or otherwise writing a report on why it is not possible or too challenging.
+\end{itemize}
+
+%Note to the reader: The description of phase II (in the second part of this document) is probably more interesting than the description of phase I.
+
+%\begin{lstlisting}[float,caption={Test},captionpos=b]{}
+%foo = [
+%   a: Int,
+%   b: Int
+%]
+%\end{lstlisting}
+
+\newpage
+
+\section{Phase I: The basic language}
+
+\subsection{General}
+
+General properties of the language:
+
+\begin{itemize}
+\item Similar to the TOOL language of the Compiler Construction course
+\item Compiler written in Scala, parts of the TOOL compiler might be reused
+\item One source file per program, compiled to Java class files
+\end{itemize}
+
+For the rest of this document, let \texttt{a} and \texttt{a1}, \dots \texttt{aN} be identifiers, let \texttt{T} and \texttt{T1}, \dots \texttt{TN} be type expressions, and let \texttt{e} and \texttt{e1}, \dots \texttt{eN} be ``normal'' expressions.
+
+There are two kinds of expressions: ``Normal'' expressions and type expressions. Fields of objects and block variables can hold the value of normal expressions or the value of a type expression. If they hold a type expressions, they only exist at compile time and are not available at run time.
+
+
+\subsection{Type expressions}
+
+\subsubsection{Constructing type expressions}
+
+Type expressions are constructed in the following way:
+
+\begin{itemize}
+\item \texttt{Int}, \texttt{Bool}, \texttt{String}, \texttt{Void} and \texttt{Null} are type expressions.
+\item The function type \texttt{T1 -> T2} is a type expression.
+\item ``Interface types'' are constructed as follows:\\
+        \texttt{[ a1: T1, a2: T2, ... aN: TN ]} \\
+        The order in which the declarations inside the interface type occur is irrelevant.
+\item The intersection type \texttt{T1 \& T2} is a type expression. If we consider types as sets of values, then \texttt{T1 \& T2} means \texttt{T1 $\cap$ T2}.
+\item Fields of objects and block variables can hold the value of normal expressions, but also the value of a type expression. 
+\end{itemize}
+
+Recursive types (and mutually recursive types) are not supported. In other words, each type definition can only use types defined before, and there are no forward declarations. This restriction dramatically reduces the power of the language, but on the other hand, the implementation of the compiler becomes much easier, because types cannot be infinite structures. One challenge of phase II will be to investigate if recursive types can be added to this language.
+
+
+\subsubsection{Simplifying type expressions}
+
+Let ``type values'' denote all type expressions that cannot be simplified further. All type values are have the form  \texttt{Int}, \texttt{Bool}, \texttt{String}, \texttt{Void} and \texttt{Null}, \texttt{T1 -> T2}, or \texttt{[ a1: T1, a2: T2, ... aN: TN ]}. To simplify a type expression means to put it into the form of a type value if possible, or to report an error stating that the type expression is invalid. There are the following simplification rules:
+
+\begin{itemize}
+\item  \texttt{[ c1: T1, $\dots$ cN: TN, a1: A1, $\dots$ aM: AM ] \&} \\
+      \texttt{[ c1: U1, $\dots$ cN: UN, b1: B1, $\dots$ bK: BK ]} \\
+      simplifies to \\
+      \texttt{[ c1: T1 \& U1, $\dots$ cN: TN \& UN, a1: A1, $\dots$ aM: AM, b1: B1, $\dots$ bK: BK ]} \\
+      Here \texttt{c1, $\dots$ cN} are the common field names of the two interfaces, \texttt{a1, $\dots$ aM} are the field names that only occur in the first interface, and \texttt{b1, $\dots$ bK} are the field names that only occur in the second interface.
+% \item \texttt{[ $a_1: T_1, \dots a_k: T_K$ ] \& [ $a_{k+1}: T_{k+1}, \dots a_N: T_N$ ]} simplifies to \texttt{[ $a_1: T_1, \dots a_N: T_N$ ]} 
+\item If the field of an object holds a type value and occurs in a type expression, it is substituted by its type value.
+\end{itemize}
+
+If during simplification, a type expression is not a type value and none of the above rules can be applied, then the type expression is invalid. For instance, the type \texttt{String \& Int} is invalid, even though it also could be evaluated to something corresponding to the empty set. 
+
+In phase II of the project, the following simplification rule might be added:
+
+\begin{itemize}
+\item \texttt{(A1 -> R1) \& (A2 -> R2)} simplifies to \texttt{(A1 $\cup$ A2) -> (R1 \& R2)}
+\end{itemize}
+
+However, this requires union types, and it should also be studied if this rule has any practical usefulness.
+
+\subsubsection{Comparing type expressions}
+
+The only relation on types we need is the subtyping relation. Before two type expressions are compared, they are simplified into type values. Then, as one would expect, the following subtyping rules apply:
+
+\begin{center}
+\begin{tabular}{ccc}
+$$\inferrule{~}{\texttt{T <: T}}$$
+&
+$$\inferrule{~}{\texttt{Null <: T1 -> T2}}$$
+&
+$$\inferrule{~}{\texttt{Null <: [ a1: T1, \dots aN: TN ]}}$$
+\end{tabular}
+\end{center}
+
+$$\inferrule{\texttt{A2 <: A1} \\ \texttt{R1 <: R2}}
+            {\texttt{(A1 -> R1) <: (A2 -> R2)}}$$
+
+$$\inferrule{\texttt{T1 <: U1} \\ \dots \\ \texttt{TN <: UN}}
+            {\texttt{[c1: T1, \dots cN: TN, b1: B1, \dots bM: BM] <: [c1: U1, \dots cN: UN]}}$$
+
+
+
+%\begin{itemize}
+%\item \texttt{Null} is a subtype of \texttt{T1 -> T2}
+%\item \texttt{Null} is a subtype of \texttt{[ a1: T1, $\dots$ aN: TN ]}
+%\item If \texttt{A2} is a subtype of \texttt{A1} and \texttt{R1} is a subtype of \texttt{R2}, then \texttt{A1 -> R1} is a subtype of \texttt{A2 -> R2}.
+%\end{itemize}
+
+\subsection{Functions}
+
+There are no methods, but only anonymous functions, which are treated as expressions. All functions take one argument and return one result expression. Both of them can be the special value \texttt{void}. Functions are written as \texttt{a:}\texttt{T => e}. To make sure that the compiler typechecks that a function returns a desired type \texttt{R}, the function has to be assigned to a typed field, such as \\ 
+\texttt{f:}\texttt{T -> R = a:}\texttt{T => e}, which is a bit clumsy and might be improved in phase II.
+
+\subsection{Object construction}
+
+There are no classes, but objects are created in a way similar to JavaScript. \\
+\texttt{(a1: T1 = e1, ... aN: TN = eN)} creates a new object with the fields \texttt{a1}, \dots \texttt{aN}, whose types are \texttt{T1}, \dots \texttt{TN} respectively, and which are initialized with the expressions \texttt{e1}, \dots \texttt{eN}. All fields are final (final as in Java) by default. Each type may be omitted. If the type is omitted, the compiler will infer the type in a simple ``bottom-up'' way.
+
+We need vals because we want to have covariant object members. We don't introduce vars for simplicity. If we still want vars, we use something like \texttt{a : var Int = Ref(5)}
+
+To add ``methods'' to an object, we add a field and initialize it with an anonymous function.
+
+\subsection{Grammar}
+
+For simplicity, the precedences are not reflected in the grammar presented here. They are the same as in Java, except for function application. There are two kinds of function application: \texttt{FuncApplWithParen} and \texttt{FuncApplNoParen}. They are semantically the same, but the difference is in their precedence: \texttt{FuncApplWithParen} has higher precedence than \texttt{GetField}, which has higher precedence than \texttt{FuncApplNoParen}. Some examples to illustrate the consequences of this:
+
+\hspace{0.4cm}
+
+\texttt{println "Hello World"} $\equiv$ \texttt{println("Hello World")} 
+
+\texttt{successor x.value} $\equiv$ \texttt{successor(x.value)} 
+
+\texttt{successor(x).value} $\equiv$ \texttt{(successor(x)).value} 
+
+\hspace{0.4cm}
+
+\begin{lstlisting}[float,caption={Grammar of the basic phase I language},captionpos=b]{}
+Program ::= BlockContent
+
+BlockContent ::= (( ValDecl | Expr ) `;`)* Expr
+
+ValDecl ::= Identifier `:` TypeExpr `=` Expr
+            | Identifier `=` (Expr | TypeExpr)
+
+TypeExpr ::= `Void` | `Null` | PrimitiveType | InterfaceType 
+             | FunctionType | IntersectionType | IndirectType
+             | `var` TypeExpr
+
+PrimitiveType ::= `Int` | `Bool` | `String`
+InterfaceType ::= `[` (Identifier `:` TypeExpr)* `]`
+FunctionType ::= TypeExpr `->` TypeExpr
+IntersectionType ::= TypeExpr `&` TypeExpr
+IndirectType ::= Identifier | IndirectType `.` Identifier
+
+Block ::= `{` BlockContent `}`
+ObjConstr ::= `(` ValDecl* `)`
+AnonFunc ::= Identifier `:` TypeExpr `=>` Expr
+             | `void` `=>` Expr
+If ::= `if` Expr `then` Expr (`else` Expr)?
+While ::= `while` Expr `do` Expr
+Println ::= `println` Expr
+BinOpExpr ::= 
+    Expr ( `&&` | `||` | `==` | `<` | `+` | `-` | `*` | `/` ) Expr
+GetField ::= Expr `.` Identifier
+Literal ::= <int literal> | `true` | `false` | `"`<string literal>`"`
+
+ExprWithParenNoFuncAppl ::= '(' Expr ')' | ObjConstr 
+ExprNoParenNoFuncAppl ::= Identifier | Block | AnonFunc | If | While 
+                          | Println | BinOpExpr | GetField | Literal
+
+FuncApplWithParen ::= Expr ExprWithParenNoFuncAppl
+FuncApplNoParen ::= Expr ExprNoParenNoFuncAppl
+
+Expr ::= ExprWithParenNoFuncAppl | ExprNoParenNoFuncAppl 
+         | FuncApplWithParen | FuncApplNoParen
+
+Identifier	::=	<java identifier>
+\end{lstlisting}
+
+
+Some remarks:
+
+\begin{itemize}
+\item Since there are no vars, there is no assignment.
+\item Later, the argument of a function might also be untyped.
+\item The interface type \texttt{[]} corresponds to Scala's type Any.
+\item Not all intersection types make sense, and some are not even valid, even though they pass the parser. For example, \texttt{myInt \& [a: Int]}
+passes the parser even if \texttt{myInt} is not a type expression, but a normal expression of type Int. Only the analyzer or type checker will detect this error.
+\item There are no statements, but only expressions. However, the compiler might issue a warning or even an error if the value of an expression is not void and not used. The \texttt{while} construct is also an expression, even though it always returns void.
+\item Currently, there is no \texttt{this} keyword.
+\item Logical ``not'' is not part of the language, but can be implemented by hand by creating a function and calling it \texttt{not}.
+\end{itemize}
+
+Function application without parentheses allows us to come up with nice domain specific languages. In the corresponding example, the additional types \texttt{True} and \texttt{False} are used. They contain only one element, the value \texttt{true} or \texttt{false}, respectively. Fields which can only be \texttt{true} can be used as ``markers''.
+
+%\subsection{A Code Example}
+
+\begin{lstlisting}[float,caption={A Code Example},captionpos=b]{}
+// ----- The Library --------------------------------------
+std = ( // something like a namespace
+   IntVector = [
+      size: Void -> Int,
+      maxSize: Int,
+      empty: Void -> Bool,
+      at: Int -> var Int,
+      push_back: Int -> Void
+   ],   
+   // very limited implementation of IntVector
+   newVector: Void -> IntVector = void => (
+      // the following fields are private because they
+      // are not in interface IntVector
+      fSize : var Int = Ref(0),
+      e0: var Int = Ref(0),
+      e1: var Int = Ref(0),
+      e2: var Int = Ref(0),
+      e3: var Int = Ref(0),
+      
+      // public fields
+      size: void => fSize.get(),
+      maxSize: 4,
+      empty: void => fSize.get() == 0,
+      at: Int -> var Int = i => {
+         if (i == 0) e0 else if (i == 1) e1 
+         else if (i == 2) e2 else if (i == 3) e3 else null
+      },
+      push_back: Int -> Void = el => {
+         at(fSize.get()).set(el);
+         fSize.set(fSize.get() + 1)
+      }
+   )      
+);
+// ----- The Application -----------------------------------
+println("Hello World");
+println "Hello World Without Needing Parentheses";
+increase = a: var Int => a.set(a.get() + 1);
+v = newVector();
+v.push_back(1);
+v.push_back 2;
+increase v.at(1);
+println(v.at(1).get())
+\end{lstlisting}
+
+
+%\subsection{Domain Specific Language Example}
+
+\begin{lstlisting}[float,caption={Domain Specific Language Example},captionpos=b]{}
+Verb = [
+   isVerb: True,
+   word: String
+   use: Void -> Void
+   printStatistics: Void -> Void
+];
+To = [ isTo: True ];
+to : To = (isTo: true);
+createVerb: wordName => (
+   isVerb = true,
+   word = wordName,
+   usageCount: var Int = Ref(0),
+   use: void => usageCount.set(usageCount.get() + 1)
+   printStatistics: void => 
+      println(usageCount + " times, someone " + word + " something")
+)
+says: Verb = createVerb "says";
+gives: Verb = createVerb "gives";
+Subject = Verb -> String -> To -> String -> void;
+createSubject: String -> Subject = 
+   subjectName => aVerb => str1 => aTo => str2 => {
+      aVerb.use();
+      println(subjectName+" "+aVerb.word+" "+str1+" to "+str2)
+   }
+
+theProgram = createSubject("The program");
+theProgram says "Hello" to "the World";
+
+Bob = createSubject "Bob";
+Bob says "Hi" to "Alice";
+Bob gives "flowers" to "Alice";
+
+gives.printStatistics();
+says.printStatistics()
+\end{lstlisting}
+
+
+\newpage
+
+\section{Phase II: Extensions}
+
+In phase II, some extensions will be studied and added to the language if possible. Some of them might be theoretically impossible or practically too challenging and go far beyond the scope of a bachelor semester project. For those, the difficulties will be described in a report.
+
+Some theoretical extensions:
+
+\begin{itemize}
+\item Recursive types
+\item Type abstractions / Generics. For generic functions, the type parameter would not be inferred, but had to be written explicitly.
+\item Covariant and contravariant subtyping of generic types
+\item Enumeration types: Types which are a set containing only values that are enumerated in the definition of the type.
+\item General union types or union over disjoint types
+\item Pattern matching over disjoint or general union types
+\item Introduce pairs, triples, ..., making sure that a $\texttt{T} \times \texttt{T} \times \texttt{T}$ is not a subtype of $\texttt{T} \times \texttt{T}$.
+\item Replacing \texttt{while} and \texttt{if} by functions without making code too ugly.
+\item Some kind of object-level inheritance or ``merging'' of two objects, dealing with conflicts in field names / overriding ... in a typesafe way.
+\item Studying the relationship between vars (which can be read and written), readonly variables (which can change), stable values which can never change, and functions from \texttt{Void} to a value (which are similar to a readonly variable), and making access and subtyping consistant among them.
+\end{itemize}
+
+Some practical extensions, only implemented in case the language turns out to be useful:
+
+\begin{itemize}
+\item A toy collection framework using generics, or integerating Java Collections
+\item Syntax improvements such as making semicolons between statements and commas between object fields optional
+\item The type Real (or Double) and the type Char
+\item I/O functionality and access to command line arguments
+\item multiple source files, namespaces or packages
+\end{itemize}
+
+During the work on this project, the above lists of possible extensions would certainly grow.
+
+\end{document}

@@ -1,0 +1,11 @@
+
+----------------------------------------------------------------
+Meyer, Albert R. and Reinhold, Mark B. "Type" is not a type. 
+Proceedings of the 13th ACM SIGACT-SIGPLAN symposium on 
+Principles of programming languages, 1986, pages 287-295.
+----------------------------------------------------------------
+
+Notes:
+
+abstract sounds very interesting
+

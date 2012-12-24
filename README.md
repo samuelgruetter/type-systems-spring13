@@ -1,4 +1,6 @@
-structural-typing
-=================
+Explorations of structural type systems
+=======================================
 
-semester project
+This repo contains everything I'm producing during my semester
+project on structural typing.
+

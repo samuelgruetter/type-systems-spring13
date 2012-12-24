@@ -1,0 +1,44 @@
+----------------------------------------------------------------
+N. Amin, A. Moors, M. Odersky, Dependent Object Types. FOOL ’12 
+October 22, 2012, Tucson, AZ, USA.
+----------------------------------------------------------------
+
+
+Notes:
+
+----
+
+> trait Food
+> trait Animal {
+>   type Meal <: Food
+>   def eat(meal: Meal) {}
+> }
+
+> It is possible to instantiate an Animal without further
+> specifying Meal, though it would not be possible to feed it.
+
+that's weird
+would it be possible to feed it with null?
+
+----
+
+reduction rule MSEL implies that method calls cannot have side
+effects, i.e. fields of objects cannot be reassigned. 
+
+----
+
+reduction rule CONTEXT
+
+>
+> e ::= [ ] | e.m(t) | v.m(e) | e.l
+>
+> These reduction rules can be applied anywhere in a term where
+> the hole [ ] of an evaluation context e can be situated.
+
+TAPL p. 262 helps
+
+----
+
+
+
+

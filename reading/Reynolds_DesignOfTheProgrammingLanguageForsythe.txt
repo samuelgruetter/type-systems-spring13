@@ -1,0 +1,9 @@
+----------------------------------------------------------------
+John C. Reynolds. Design of the Programming Language Forsythe
+----------------------------------------------------------------
+
+Notes:
+
+One of Forsythe's features is type intersection.
+
+
