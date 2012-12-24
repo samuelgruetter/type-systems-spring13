@@ -1,0 +1,78 @@
+\documentclass[12pt, draft]{article}
+
+\usepackage[margin=2cm]{geometry}
+\usepackage{mathpartir}
+\usepackage{lastpage}
+% [final] because with draft, listings don't work
+\usepackage[final]{listings}
+
+\title{Toy Structurally Typed Language}
+\author{Samuel Gr\"utter}
+\date{}
+
+% cmtt supports < and >
+\usepackage{cmtt}
+
+% plain text
+\lstset{language=}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{document}
+
+\parindent=0pt
+
+\section{Direction}
+
+The following points describe in which direction I would like to go and why I 
+find this direction interesting.
+
+-- draft -- TODO --
+
+\begin{description}
+
+  \item[Structural typing considered useful for practical programming] 
+  Two examples:
+  \begin{itemize}
+  \item File exchange protocol (e.g. BitTorrent), message classes. 
+        Crypto-extension to basic library without modifying basic libarary \
+        and no boiler plate code.
+  \item Combine two libraries with objects of same structure, but different
+        "classes"
+  \end{itemize}
+  
+  \item[Types behave as mathematical sets] 
+  Easier than lattice and glb/lub.
+  \begin{itemize}
+     \item for the programmer (language user): tell ``just draw a Venn diagram''
+     \item for the language spec
+  \end{itemize} 
+  
+  \item[Simulate nominal typing with structural typing] 
+  but the inverse does not work
+  
+  \item[Keep it simple and doable] 
+  and a short spec is appealing
+  
+  \item[Clear separation of interfaces and implementation] 
+  For instance, I believe that the lack of this separation is the source 
+  of the problem described in section 6.2.2 of the DOT paper.
+
+\end{description}
+
+\section{Types and sets}
+
+For each type \lstinline!T!, define the \emph{set of objects} as
+
+$$oset(T) = \{ obj | obj : T \}$$
+
+For each interface type \lstinline!I = [a1: T1, ..., aN: TN]!, define the 
+\emph{set of properties} as 
+
+$$pset(I) = \{ (a1: T1), \dots , (aN: TN) \}$$
+
+When discussing type systems, it is important to specify whether we consider
+types as sets of objects or as sets of properties. Both points of view are
+interesting.
+
+\end{document}
