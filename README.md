@@ -1,0 +1,4 @@
+structural-typing
+=================
+
+semester project
