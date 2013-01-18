@@ -387,5 +387,97 @@ Language: racket; memory limit: 128 MB.
 Both tests passed.
 > 
 
+;; ex7
+
+Welcome to DrRacket, version 5.3.1--2012-05-05(-/f) [3m].
+Language: racket; memory limit: 128 MB.
+> (traces red
+        (term ((+ (amb 1 2)
+                  (amb 10 20)))))
+reduction-relation: relation not defined for ((+ (amb 1 2) (amb 10 20)))
+> (traces red
+        (term ((+ (amb num 1 2)
+                  (amb num 10 20)))))
+> (stepper red
+        (term ((+ (amb num 1 2)
+                  (amb num 10 20)))))
+> 
+
+it's stuck because my amb expects a type as first arg
+
+Welcome to DrRacket, version 5.3.1--2012-05-05(-/f) [3m].
+Language: racket; memory limit: 128 MB.
+> (traces red
+        (term ((+ (amb num 1 2)
+                  (amb num 10 20)))))
+
+; fancy reduction graph with many paths which all lead to (11 21 12 22)
+
+;; ex8
+
+> (judgment-holds
+    (types ·  (fix (λ 
+                 (f (→ (→ num num) (→ num num)))
+                 (λ (n num) (if0 n 0 (amb num n (f (+ n -1)))))
+               )) t)
+    t)
+'()
+
+; I should understand the fix operator...
+
+> (judgment-holds
+    (types ·  (fix (λ (f (→ num num)) λ (n num) (
+                 (if0 n 0 (amb num n (f (+ n -1)))))
+               )) t)
+    t)
+. . types: input (fix (λ (f (→ num num)) λ (n num) ((if0 n 0 (amb num n (f (+ n -1))))))) at position 2 does not match its contract
+> (judgment-holds
+    (types ·  (fix (λ (f (→ num num)) (λ (n num) (
+                 (if0 n 0 (amb num n (f (+ n -1)))))
+               ))) t)
+    t)
+. . types: input (fix (λ (f (→ num num)) (λ (n num) ((if0 n 0 (amb num n (f (+ n -1)))))))) at position 2 does not match its contract
+> (judgment-holds
+    (types ·  (fix (λ (f (→ num num)) (λ (n num)
+                 (if0 n 0 (amb num n (f (+ n -1))))
+               ))) t)
+    t)
+'((→ num num))
+
+; types look good
+
+> ( (fix (λ (f (→ num num)) (λ (n num)
+                 (if0 n 0 (amb num n (f (+ n -1))))
+               ))) 5)
+. λ: not an identifier, identifier with default, or keyword in: (→ num num)
+> (traces red (term ( (fix (λ (f (→ num num)) (λ (n num)
+                 (if0 n 0 (amb num n (f (+ n -1))))
+               ))) 5)))
+> 
+
+; but this evaluation is stuck!
+
+
+> (traces red (term ((λ (n num) 5) 4)))
+
+; is also suck!!
+
+; OMG because term always requires a double pair of parentheses :P
+
+> (traces red (term (( (fix (λ (f (→ num num)) (λ (n num)
+                 (if0 n 0 (amb num n (f (+ n -1))))
+               ))) 5))))
+
+; now ex8 works :)
+
+
+
+
+
+
+
+
+
+
 
 
