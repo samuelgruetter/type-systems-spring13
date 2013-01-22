@@ -52,7 +52,7 @@
     (& t t))                  ;   t & t
   (patht                      ; path type ("indirect type")
     id                        ;   identifier
-    ;(sel patht id)           ;   pathh.id is only useful if we can specify in
+    ;(sel patht id)           ;   path.id is only useful if we can specify in
     )                         ;   an interface that an object must have a given
                               ;   type member -> that would be DOT, and we're
                               ;   not doing DOT here, so it's commented out.
@@ -69,7 +69,7 @@
     literal)                  ;   literal
   
   (oc                         ; object construction
-    (vd ...))                 ;   (possibly empty) list of value declarations
+    (d ...))                  ;   (possibly empty) list of declarations
   
   (binop                      ; binary operator expression
     (&& e e)                  ;   logical and
@@ -152,22 +152,6 @@
    ]
 )
 
-; true iff two identifiers are different
-#|(define-metafunction L-simple-v1+Γ
-  [(different id_1 id_1) #f]
-  [(different id_1 id_2) #t]
-)|# ; TODO unused?
-
-; filter-for-ds filters a list of statements, keeping only declarations
-(define-metafunction L-simple-v1+Γ
-  filter-for-ds : (stat ...) -> (d ...)
-  [(filter-for-ds ()) ()]
-  [(filter-for-ds (d stat_s ...))
-   ((filter-for-ds (stat_s)) ... d)]
-  [(filter-for-ds (stat_notd stat_s ...))
-   ((filter-for-ds (stat_s)) ...)]
-)
-
 ; Note that define-judgment-form expects the same name everywhere,
 ; so a rule cannot combine different judgments. To work around this,
 ; we have to define the judgments as metafunctions. 
@@ -195,20 +179,21 @@
 )
 (define-metafunction L-simple-v1+Γ
   is-wf-stat : Γ stat -> bool
-  [(is-wf-stat Γ vd)                     ; view value declaration as statement
-   (judgement-holds (wf-vd vd t_unbound))]
-  [(is-wf-stat Γ td)                     ; view type declaration as statement
-   (judgement-holds (wf-vd td t_unbound))]
+  [(is-wf-stat Γ d)                      ; view declaration as statement
+   (is-wf-d Γ d)]
   [(is-wf-stat Γ (ign e))                ; ign-statement
    (judgment-holds (types Γ e Void))] 
   [(is-wf-stat Γ {})                     ; empty statement block
    #t]
-  [(is-wf-stat Γ {stat_before ... stat}) ; statement block
-    (and 
-      (is-wf-stat Γ {stat_before ... })
-      (judgement-holds (types ;;;;;;;;;;;;;;;;;;TODO
-        (Γ-extend-with-vds Γ (filter-for-vds stat_before ...))
-        stat)))]
+  [(is-wf-stat Γ {d stat_after ...})     ; statement block beginning with d
+   (and
+     (is-wf-d Γ d)
+     (is-wf-stat Γ_new {stat_after ...}))
+   (where Γ_new (Γ-extend Γ (d-to-mapping d Γ)))]
+  [(is-wf-stat Γ {stat stat_after ...})  ; statement block not beginning with d
+   (and
+     (is-wf-stat Γ stat)
+     (is-wf-stat Γ {stat_after ...}))]  
   [(is-wf-stat Γ (println e))            ; println a primitive type
    (judgement-holds (types Γ e primt))]
   [(is-wf-stat Γ (if e stat))            ; if-then with no return value
@@ -227,81 +212,37 @@
       (is-wf-stat Γ stat))]
 )
 
-; (wf-oc Γ oc intft) means that in Γ, oc is a well-formed object construction
-; of interface type intft
+; (wf-d Γ d) means that in Γ, d is a well-formed declaration
+; Does not check that id is not yet in Γ
 (define-judgment-form
   L-simple-v1+Γ
-  #:mode (wf-oc I I O)
-  #:contract (wf-oc Γ oc intft)
-  [(wf-oc Γ () [])]                                         ; empty/void object
-  #|
-  [(wf-oc Γ (vd_s ... vd) [(val id_s t_s) ... (val id t)])  ; non-empty object
-   (wf-oc Γ (vd_s ...) [(val id_s t_s) ...])
-   (side-condition (judgement-holds (wf-vd vd t)))]
-  |#
-  ; TODO connect id of vd oc with id in interface
-  ; TODO distinguish typed and untyped case (fix ambiguity...)
+  #:mode (wf-d I I)
+  #:contract (wf-d Γ d)
+  [(wf-d Γ d)
+   (side-condition (is-wf-d Γ d))]
 )
-
-; (wf-vd Γ vd t) means that in Γ, vd is a well-formed value declaration of 
-; type t
-(define-judgment-form
-  L-simple-v1+Γ
-  #:mode (wf-vd I I O)
-  #:contract (wf-vd Γ vd t)
-  [(wf-vd Γ (val id t e) t)                  ; typed vd initialized with e
-   ;(side-condition (judgement-holds (types e t)))
-   ]
-  ; TODO
+(define-metafunction L-simple-v1+Γ
+  is-wf-d : Γ d -> bool
+  [(is-wf-d Γ (val id t e))               ; typed val decl
+   (judgement-holds (types Γ e t))]
+  [(is-wf-d Γ (val id e))                 ; untyped val decl
+   (judgement-holds (types Γ e t_unbound))]
+  [(is-wf-d Γ (type id t))                ; type decl
+   (is-wf-t Γ t)]
 )
-
 
 ; (calc-oc-type Γ oc) returns the interface type of object construction oc
+; also typechecks rhs of declarations
 (define-metafunction L-simple-v1+Γ
-  calc-oc-type : Γ oc -> intft
+  calc-oc-type : Γ oc -> intft or #f
   [(calc-oc-type Γ ()) []]
-  [(calc-oc-type Γ ()) []]
-)
-
-; convert mappings from Γ to interface type, taking only value declarations
-; and ignoring type declarations.
-; Γ_outer is the context needed to construct the type of untyped vds
-(define-metafunction L-simple-v1+Γ
-  Γ-to-intft : Γ Γ -> intft
-  [(Γ-to-intft ()) ()]
-  [(Γ-to-intft (mapping_s ... (val id t e)) Γ_outer); typed value declarations
-   ((Γ-to-intft (mapping_s) ... (val id t)))]
-  [(Γ-to-intft (mapping_s ... (val id e)) Γ_outer)  ; untyped value declarations
-   ((Γ-to-intft (mapping_s) ... (val id (calc-e-type Γ_outer e))))]
-  [(Γ-to-intft (mapping_s ... (type id t)) Γ_outer) ; ignore type declarations
-   (Γ-to-intft (mapping_s ...))]
-)
-
-; Γ-extend-with-ds extends Γ with mappings obtained from declarations
-; Γ_outer is the context needed to construct the type of untyped vds
-(define-metafunction L-simple-v1+Γ
-  Γ-extend-with-ds : Γ Γ (d ...) -> Γ
-  
-  [(Γ-extend-with-ds Γ Γ_outer ()) Γ]
-  
-  [(Γ-extend-with-ds Γ Γ_outer ((val id t e) d_s ...))  ; typed val decl
-   (Γ-extend-with-ds 
-        (Γ-extend Γ (val id t))
-        (Γ-extend Γ_outer (val id t)) ; current d visible for subsequent ds
-        (d_s ...))]
-  
-  [(Γ-extend-with-ds Γ Γ_outer ((val id e) d_s ...))    ; untyped val decl
-   (Γ-extend-with-ds 
-        (Γ-extend Γ (val id t))
-        (Γ-extend Γ_outer (val id t)) ; dito
-        (d_s ...))
-   (where t (calc-e-type Γ_outer e))] ; "infer" type
-  
-  [(Γ-extend-with-ds Γ Γ_outer ((type id t) d_s ...))   ; type decl
-   (Γ-extend-with-ds 
-        (Γ-extend Γ (type id t))
-        (Γ-extend Γ_outer (type id t)) ; dito
-        (d_s ...))]
+  [(calc-oc-type Γ (d d_s ...))
+   (if (is-wf-d Γ d)
+       ; Γs have the same form as intfts :)
+       (Γ-extend (calc-oc-type Γ_new (d_s ...)) mp)
+       #f)
+   (where Γ_new (Γ-extend Γ mp))
+   (where mp (d-to-mapping d Γ))]
 )
 
 ; converts a value or type declaration to a mapping which can be stored in a Γ
@@ -321,8 +262,8 @@
 (define-metafunction L-simple-v1+Γ
   calc-e-type : Γ e -> t
   [(calc-e-type Γ e)
+   ;t (where t (judgement-holds (types Γ e t)))]
    (head-of-singleton-list (judgment-holds (types Γ e t) t))]
-  ; TODO why does everything look like a work-around?
 )
 (define-metafunction L-simple-v1+Γ
   head-of-singleton-list : (any ...) -> any
@@ -344,8 +285,8 @@
    --------------------------------------- ; (Type of anonymous function)
    (types Γ (=> (id t_1) e) (-> t_1 t_2))]
   
-  ; TODO what if Γ-lookup returns #f ??
-  [(where t (Γ-lookup Γ id))
+  ; TODO what if Γ-lookup-val returns #f ??
+  [(where t (Γ-lookup-val Γ id))
    ----------------------------------------- ; (Extract val's type from Γ)
    (types Γ id t)]
   
@@ -367,23 +308,28 @@
    ------------------------------ ; (if-then-else expression)
    (types Γ (if e_1 e_2 e_3) t)]
   
-  [(types Γ stat Stat) ...
-   (types Γ e t)
-   --------------------------- ; (expression block)
-   (types Γ { stat ... e } t)]
+  [(types Γ e t)
+   ----------------- ; (expression block of one single expression)
+   (types Γ {e} t)]
   
-  #| TODO fix this
-  [(side-condition (judgement-holds (wf-oc Γ oc intft)))
-   ----------------------------------------------------- ; (object construction)
-   (types Γ oc intft)]
-  |#
+  [(types (Γ-extend Γ (d-to-mapping Γ d)) {stat_s ... e} t)
+   (side-condition (is-wf-d Γ d))   
+   ---------------------------------------- ; (expression block starting with d)
+   (types Γ { d stat_s ... e } t)]
   
-  ; TODO type rule for (sel e id)
+  [(types Γ {stat_s ... e} t)
+   (side-condition (is-wf-stat Γ stat))
+   ----------------------------------- ; (expression block not starting with d)
+   (types Γ { stat stat_s ... e } t)]
   
+  [------------------------------- ; (type of object construction)
+   (types Γ oc (calc-oc-type oc))]
   
-
-  
-  
+  ; we consider the intft returned by (calc-type e) as a Γ
+  [(where t (Γ-lookup-val (calc-type e) id))
+   ------------------------------------------  ; (e.id)
+   (types Γ (sel e id) t)]
+    
   [(types Γ e_1 Int)
    (types Γ e_2 Int)
    -------------------------- ; (integer addition)
@@ -454,37 +400,50 @@
   
 )
 
-; (wf-t Γ t) means that in Γ, t is a well-formed type expression
-(define-judgment-form
-  L-simple-v1+Γ
-  #:mode (wf-t I I)
-  #:contract (wf-t Γ t)
-  [(wf-t Γ Void)]                        ; the type of `void`
-  [(wf-t Γ Null)]                        ; the type of `null`
-  [(wf-t Γ primt)]                       ; primitive type
-  [(wf-t Γ (var t))                      ; reference cell type
-   (wf-t Γ t)]
-  
-  #| TODO all these:
-
-    intft                     ;   interface type
-    funct                     ;   function type
-    intst                     ;   intersection type
-    patht                     ;   path type 
-  
-  (intft                      ; interface type
-    [(val id t) ...])         ;   sequence of vals with id and type
-  (funct                      ; function type
-    (-> t t))                 ;   t -> t
-  (intst                      ; intersection type
-    (& t t))                  ;   t & t
-  (patht                      ; path type ("indirect type")
-    id                        ;   identifier
-    (sel patht id))           ;   pathh . id  
-     ---> TODO requires compile-time store
-  |#
-
+; (eval-type Γ t) evaluates a type expression t in environment Γ
+(define-metafunction L-simple-v1+Γ
+  eval-type : Γ t -> t
+  [(eval-type Γ Void) Void ]         ; Void
+  [(eval-type Γ Null) Null ]         ; Null
+  [(eval-type Γ primt) primt ]       ; primitive types
+  [(eval-type Γ intft) intft ]       ; interface types
+  [(eval-type Γ (-> t_arg t_ret))    ; function types
+   (-> (eval-type Γ t_arg)
+       (eval-type Γ t_ret))]
+  [(eval-type Γ (& t_1 t_2))         ; intersection types
+   (intersect-ts 
+     (eval-type Γ t_1) 
+     (eval-type Γ t_2))]
+  [(eval-type Γ id)                  ; id referring to type decl
+   (Γ-lookup-type Γ id)]
+  [(eval-type Γ (var t))             ; reference cells
+   (var (eval-type Γ t))]
 )
+
+(define-metafunction L-simple-v1
+  intersect-ts : t t -> t or #f
+  [(intersect-ts t t) t]
+  ; TODO other cases
+)
+(define-metafunction L-simple-v1
+  intersect-intfts : intft intft -> intft
+  [(intersect-intfts intft_1 intft_2)
+   (intersect-sorted-intfts (sort-intft intft_1) (sort-intft intft_2))]
+)
+(define-metafunction L-simple-v1
+  intersect-sorted-intfts : ((val id t) ...) ((val id t) ...) -> ((val id t) ...)
+  [(intersect-sorted-intfts ((val id t) ...) ((val id t) ...))
+   ((val id t) ...)] ; TODO
+)
+(define-metafunction L-simple-v1
+  sort-intft : ((val id t) ...) -> ((val id t) ...)
+  [(sort-intft ((val id t) ...)) 
+   ,(raw-sort-intft (term (id ...)))]
+)
+(define (raw-sort-intft decls) 
+  (sort decls #:key (lambda (x) (symbol->string (cadr x))) string<?)
+)
+
 
 ;;; Reduction Relation ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -505,3 +464,93 @@
      number))
 
 
+; UNUSED ;
+
+#|
+
+; convert mappings from Γ to interface type, taking only value declarations
+; and ignoring type declarations.
+; Γ_outer is the context needed to construct the type of untyped vds
+(define-metafunction L-simple-v1+Γ
+  Γ-to-intft : Γ Γ -> intft
+  [(Γ-to-intft ()) ()]
+  [(Γ-to-intft (mapping_s ... (val id t e)) Γ_outer); typed value declarations
+   ((Γ-to-intft (mapping_s) ... (val id t)))]
+  [(Γ-to-intft (mapping_s ... (val id e)) Γ_outer)  ; untyped value declarations
+   ((Γ-to-intft (mapping_s) ... (val id (calc-e-type Γ_outer e))))]
+  [(Γ-to-intft (mapping_s ... (type id t)) Γ_outer) ; ignore type declarations
+   (Γ-to-intft (mapping_s ...))]
+)
+
+
+#|
+; Γ-extend-with-ds extends Γ with mappings obtained from declarations
+; Γ_outer is the context needed to construct the type of untyped vds
+(define-metafunction L-simple-v1+Γ
+  Γ-extend-with-ds : Γ Γ (d ...) -> Γ
+  
+  [(Γ-extend-with-ds Γ Γ_outer ()) Γ]
+  
+  [(Γ-extend-with-ds Γ Γ_outer (d d_s ...))
+   (Γ-extend-with-ds 
+        (Γ-extend Γ d)
+        (Γ-extend Γ_outer d) ; current d visible for subsequent d_s
+        (d_s ...))]
+) TODO unused?|#
+
+
+; true iff two identifiers are different
+#|(define-metafunction L-simple-v1+Γ
+  [(different id_1 id_1) #f]
+  [(different id_1 id_2) #t]
+)|# ; TODO unused?
+
+
+; filter-for-ds filters a list of statements, keeping only declarations
+(define-metafunction L-simple-v1+Γ
+  filter-for-ds : (stat ...) -> (d ...)
+  [(filter-for-ds ()) ()]
+  [(filter-for-ds (d stat_s ...))
+   ((filter-for-ds (stat_s)) ... d)]
+  [(filter-for-ds (stat_notd stat_s ...))
+   ((filter-for-ds (stat_s)) ...)]
+)
+
+
+#|; (wf-oc Γ oc intft) means that in Γ, oc is a well-formed object construction
+; of precisely (no subtype) interface type intft
+(define-judgment-form
+  L-simple-v1+Γ
+  #:mode (wf-oc I I O)
+  #:contract (wf-oc Γ oc intft)
+  [(wf-oc Γ oc intft)
+   (where intft (calc-oc-type Γ oc))]
+) TODO unused?|#
+
+|#
+
+#|
+(wf-t Γ t) is not used because we always use eval-type instead
+
+; (wf-t Γ t) means that in Γ, t is a well-formed type expression
+(define-judgment-form
+  L-simple-v1+Γ
+  #:mode (wf-t I I)
+  #:contract (wf-t Γ t)
+  [(wf-t Γ Void)]                        ; the type of `void`
+  [(wf-t Γ Null)]                        ; the type of `null`
+  [(wf-t Γ primt)]                       ; primitive type
+  [(wf-t Γ (var t))                      ; reference cell type
+   (wf-t Γ t)]
+  [(wf-t Γ ((val id t) ...))             ; interface type
+   (wf-t Γ t) ... ]
+  [(wf-t Γ (-> t_arg t_ret))             ; function type
+   (wf-t Γ t_arg)
+   (wf-t Γ t_ret)]
+  [(wf-t Γ (& t_1 t_2))                  ; intersection type currently only for
+   (wf-t Γ t_1)
+   (wf-t Γ t_2)]
+  [(wf-t Γ id)                           ; id referring to a type decl
+   (where t (Γ-lookup-type Γ id))]
+)
+|#
