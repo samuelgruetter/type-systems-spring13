@@ -151,32 +151,21 @@
    (, (error 'Γ-extend "redefining mapping")) ; TODO better error message
    ]
 )
-; Γ-extend-with-ds extends Γ with mappings obtained from declarations
-(define-metafunction L-simple-v1+Γ
-  Γ-extend-with-ds : Γ (d ...) -> Γ
-  [(Γ-extend-with-ds Γ ()) Γ]
-  [(Γ-extend-with-ds Γ ((val id t e) d_s ...))
-   (Γ-extend-with-ds (Γ-extend Γ (val id t)) (d_s ...))]
-  [(Γ-extend-with-ds Γ ((val id e) d_s ...))
-   (Γ-extend-with-ds (Γ-extend Γ id INFER) (d_s ...))];TODO
-  [(Γ-extend-with-ds Γ ((type id t) d_s ...))
-   (Γ-extend-with-ds (Γ-extend Γ (type id t)) (d_s ...))]
-)
 
 ; true iff two identifiers are different
-(define-metafunction L-simple-v1+Γ
+#|(define-metafunction L-simple-v1+Γ
   [(different id_1 id_1) #f]
   [(different id_1 id_2) #t]
-)
+)|# ; TODO unused?
 
-; filter-for-vds filters a list of statements, keeping only value declarations
+; filter-for-ds filters a list of statements, keeping only declarations
 (define-metafunction L-simple-v1+Γ
-  filter-for-vds : (stat ...) -> (vd ...)
-  [(filter-for-vds ()) ()]
-  [(filter-for-vds (vd stat_s ...))
-   ((filter-for-vds (stat_s)) ... vd)]
-  [(filter-for-vds (stat_notvd stat_s ...))
-   ((filter-for-vds (stat_s)) ...)]
+  filter-for-ds : (stat ...) -> (d ...)
+  [(filter-for-ds ()) ()]
+  [(filter-for-ds (d stat_s ...))
+   ((filter-for-ds (stat_s)) ... d)]
+  [(filter-for-ds (stat_notd stat_s ...))
+   ((filter-for-ds (stat_s)) ...)]
 )
 
 ; Note that define-judgment-form expects the same name everywhere,
@@ -185,6 +174,16 @@
 
 
 ;;; Typechecking ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; (wf-prog prog) means that prog is a well-formed program
+(define-judgment-form
+  L-simple-v1+Γ
+  #:mode (wf-prog I)
+  #:contract (wf-prog prog)
+  [(wf-prog prog)
+   ; just check if prog is a well-formed statement in the empty enviroment
+   (side-condition (is-wf-stat () prog))]
+)
 
 ; (wf-stat Γ stat) means that in Γ, stat is a well-formed statement
 (define-judgment-form
@@ -207,7 +206,7 @@
   [(is-wf-stat Γ {stat_before ... stat}) ; statement block
     (and 
       (is-wf-stat Γ {stat_before ... })
-      (judgement-holds (types 
+      (judgement-holds (types ;;;;;;;;;;;;;;;;;;TODO
         (Γ-extend-with-vds Γ (filter-for-vds stat_before ...))
         stat)))]
   [(is-wf-stat Γ (println e))            ; println a primitive type
@@ -256,10 +255,72 @@
   ; TODO
 )
 
-; (calc-type Γ e) returns the type of expression e
+
+; (calc-oc-type Γ oc) returns the interface type of object construction oc
 (define-metafunction L-simple-v1+Γ
-  calc-type : Γ e -> t
-  [(calc-type Γ e)
+  calc-oc-type : Γ oc -> intft
+  [(calc-oc-type Γ ()) []]
+  [(calc-oc-type Γ ()) []]
+)
+
+; convert mappings from Γ to interface type, taking only value declarations
+; and ignoring type declarations.
+; Γ_outer is the context needed to construct the type of untyped vds
+(define-metafunction L-simple-v1+Γ
+  Γ-to-intft : Γ Γ -> intft
+  [(Γ-to-intft ()) ()]
+  [(Γ-to-intft (mapping_s ... (val id t e)) Γ_outer); typed value declarations
+   ((Γ-to-intft (mapping_s) ... (val id t)))]
+  [(Γ-to-intft (mapping_s ... (val id e)) Γ_outer)  ; untyped value declarations
+   ((Γ-to-intft (mapping_s) ... (val id (calc-e-type Γ_outer e))))]
+  [(Γ-to-intft (mapping_s ... (type id t)) Γ_outer) ; ignore type declarations
+   (Γ-to-intft (mapping_s ...))]
+)
+
+; Γ-extend-with-ds extends Γ with mappings obtained from declarations
+; Γ_outer is the context needed to construct the type of untyped vds
+(define-metafunction L-simple-v1+Γ
+  Γ-extend-with-ds : Γ Γ (d ...) -> Γ
+  
+  [(Γ-extend-with-ds Γ Γ_outer ()) Γ]
+  
+  [(Γ-extend-with-ds Γ Γ_outer ((val id t e) d_s ...))  ; typed val decl
+   (Γ-extend-with-ds 
+        (Γ-extend Γ (val id t))
+        (Γ-extend Γ_outer (val id t)) ; current d visible for subsequent ds
+        (d_s ...))]
+  
+  [(Γ-extend-with-ds Γ Γ_outer ((val id e) d_s ...))    ; untyped val decl
+   (Γ-extend-with-ds 
+        (Γ-extend Γ (val id t))
+        (Γ-extend Γ_outer (val id t)) ; dito
+        (d_s ...))
+   (where t (calc-e-type Γ_outer e))] ; "infer" type
+  
+  [(Γ-extend-with-ds Γ Γ_outer ((type id t) d_s ...))   ; type decl
+   (Γ-extend-with-ds 
+        (Γ-extend Γ (type id t))
+        (Γ-extend Γ_outer (type id t)) ; dito
+        (d_s ...))]
+)
+
+; converts a value or type declaration to a mapping which can be stored in a Γ
+; Γ_outer is the context needed to construct the type of untyped vds
+(define-metafunction L-simple-v1+Γ
+  d-to-mapping : d Γ_outer -> mapping
+  [(d-to-mapping (val id t e) Γ_outer)    ; typed val decl
+   (val id t)]
+  [(d-to-mapping (val id e) Γ_outer)      ; untyped val decl
+   (val id t)
+   (where t (calc-e-type Γ_outer e))]
+  [(d-to-mapping (type id t) Γ_outer)     ; type decl
+   (type id t)]
+)
+
+; (calc-e-type Γ e) returns the type of expression e
+(define-metafunction L-simple-v1+Γ
+  calc-e-type : Γ e -> t
+  [(calc-e-type Γ e)
    (head-of-singleton-list (judgment-holds (types Γ e t) t))]
   ; TODO why does everything look like a work-around?
 )
