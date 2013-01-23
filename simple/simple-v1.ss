@@ -1,7 +1,7 @@
 #lang racket
 (require redex)
 
-(provide L-simple-v1)
+(provide (all-defined-out))
 
 ;;; The Grammar ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -74,7 +74,7 @@
   (binop                      ; binary operator expression
     (&& e e)                  ;   logical and
     (|| e e)                  ;   logical or
-    (== e e)                  ;   equality (TODO by address or structure?)
+    (== e e)                  ;   equality for primitive types and Null
     (< e e)                   ;   less than for integers
     (+ e e)                   ;   integer addition or string concatenation
     (- e e)                   ;   integer subtraction
@@ -85,6 +85,7 @@
     number                    ;   integer (provided by racket)
     true                      ;   boolean
     false                     ;   boolean
+    null                      ;   bottom type
     string)                   ;   string (provided by racket)
   
   (id                         ; identifier
@@ -419,7 +420,7 @@
   [(eval-type Γ (var t))             ; reference cells
    (var (eval-type Γ t))]
 )
-; types given as argument must be simplified (evaluated) before
+; types given as argument must be  shallowly simplified (evaluated) before
 ; type returned is also simplified
 (define-metafunction L-simple-v1
   intersect-ts : t t -> t or #f
@@ -440,10 +441,33 @@
   [(intersect-intfts intft_1 intft_2)
    (intersect-sorted-intfts (sort-intft intft_1) (sort-intft intft_2))]
 )
-(define-metafunction L-simple-v1
+(define-metafunction L-simple-v1+Γ
   intersect-sorted-intfts : ((val id t) ...) ((val id t) ...) -> ((val id t) ...)
-  [(intersect-sorted-intfts ((val id t) ...) ((val id t) ...))
-   ((val id t) ...)] ; TODO
+  [(intersect-sorted-intfts 
+     ((val id_same t_1) mapping_1 ...) 
+     ((val id_same t_2) mapping_2 ...))
+   ,(cons (term (val id_same (intersect-ts (eval-type t_1) (eval-type t_2))))
+          (term (intersect-sorted-intfts (mapping_1 ...) (mapping_2 ...))))]
+  [(intersect-sorted-intfts 
+     ((val id_same t_1) mapping_1 ...) 
+     (mapping_21 ... (val id_same t_2) mapping_22 ...))
+   ,(cons (term (val id_same (intersect-ts (eval-type t_1) (eval-type t_2))))
+          (term (intersect-sorted-intfts (mapping_1 ...) (mapping_22 ...))))]
+  [(intersect-sorted-intfts 
+     (mapping_11 ... (val id_same t_1) mapping_12 ...) 
+     ((val id_same t_2) mapping_2 ...))
+   ,(cons (term (val id_same (intersect-ts (eval-type t_1) (eval-type t_2))))
+          (term (intersect-sorted-intfts (mapping_12 ...) (mapping_2 ...))))]
+  [(intersect-sorted-intfts 
+     ((val id_1 t_1) mapping_1 ...) 
+     ((val id_2 t_2) mapping_2 ...))
+   ,(cons (term (val id_1 (eval-type t_1)))
+          (cons (term (val id_2 (eval-type t_2)))
+                (term (intersect-sorted-intfts (mapping_1 ...) (mapping_2 ...)))))]
+  [(intersect-sorted-intfts (mapping_1 ...) ())
+   (mapping_1 ...)]
+  [(intersect-sorted-intfts () (mapping_2 ...))
+   (mapping_2 ...)]
 )
 (define-metafunction L-simple-v1
   sort-intft : ((val id t) ...) -> ((val id t) ...)
@@ -451,7 +475,7 @@
    ,(raw-sort-intft (term (id ...)))]
 )
 (define (raw-sort-intft decls) 
-  (sort decls #:key (lambda (x) (symbol->string (cadr x))) string<?)
+  (sort decls #:key (lambda (x) (symbol->string x)) string<?)
 )
 
 
