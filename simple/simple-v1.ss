@@ -419,11 +419,21 @@
   [(eval-type Γ (var t))             ; reference cells
    (var (eval-type Γ t))]
 )
-
+; types given as argument must be simplified (evaluated) before
+; type returned is also simplified
 (define-metafunction L-simple-v1
   intersect-ts : t t -> t or #f
+  
   [(intersect-ts t t) t]
-  ; TODO other cases
+  
+  [(intersect-ts (-> t_arg t_ret1) (-> t_arg t_ret2))
+   (-> t_arg (intersect-ts t_ret1 t_ret2))]
+  ; once we have untion types, we can take union on argument type
+  
+  [(intersect-ts intft_1 intft_2)
+   (intersect-intfts intft_1 intft_2)]
+  
+  [(intersect-ts t_1 t_2) #f] ; incompatible (not "empty type")
 )
 (define-metafunction L-simple-v1
   intersect-intfts : intft intft -> intft
