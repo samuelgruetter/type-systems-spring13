@@ -11,7 +11,7 @@
   (stat                       ; statement
     (ign e)                   ;   `(ign e)` instead of `e;` : ignore void
     { stat stat ... }         ;   block of statements
-    d                        ;   type or value declaration
+    d                         ;   type or value declaration
     (println e)               ;   print line
     (if e stat)               ;   if-then with no return value
     (if e stat stat)          ;   if-then-else with no return value
@@ -407,7 +407,8 @@
   [(eval-type Γ Void) Void ]         ; Void
   [(eval-type Γ Null) Null ]         ; Null
   [(eval-type Γ primt) primt ]       ; primitive types
-  [(eval-type Γ intft) intft ]       ; interface types
+  [(eval-type Γ ((val id t) ...))    ; interface types
+   ((val id (eval-type Γ t)) ...)]
   [(eval-type Γ (-> t_arg t_ret))    ; function types
    (-> (eval-type Γ t_arg)
        (eval-type Γ t_ret))]
@@ -420,7 +421,7 @@
   [(eval-type Γ (var t))             ; reference cells
    (var (eval-type Γ t))]
 )
-; types given as argument must be  shallowly simplified (evaluated) before
+; types given as argument must be simplified (evaluated) before
 ; type returned is also simplified
 (define-metafunction L-simple-v1
   intersect-ts : t t -> t or #f
@@ -446,24 +447,30 @@
   [(intersect-sorted-intfts 
      ((val id_same t_1) mapping_1 ...) 
      ((val id_same t_2) mapping_2 ...))
-   ,(cons (term (val id_same (intersect-ts (eval-type t_1) (eval-type t_2))))
+   ,(cons (term (val id_same (intersect-ts t_1 t_2)))
           (term (intersect-sorted-intfts (mapping_1 ...) (mapping_2 ...))))]
   [(intersect-sorted-intfts 
      ((val id_same t_1) mapping_1 ...) 
      (mapping_21 ... (val id_same t_2) mapping_22 ...))
-   ,(cons (term (val id_same (intersect-ts (eval-type t_1) (eval-type t_2))))
+   ,(cons (term (val id_same (intersect-ts t_1 t_2)))
           (term (intersect-sorted-intfts (mapping_1 ...) (mapping_22 ...))))]
   [(intersect-sorted-intfts 
      (mapping_11 ... (val id_same t_1) mapping_12 ...) 
      ((val id_same t_2) mapping_2 ...))
-   ,(cons (term (val id_same (intersect-ts (eval-type t_1) (eval-type t_2))))
+   ,(cons (term (val id_same (intersect-ts t_1 t_2)))
           (term (intersect-sorted-intfts (mapping_12 ...) (mapping_2 ...))))]
   [(intersect-sorted-intfts 
      ((val id_1 t_1) mapping_1 ...) 
      ((val id_2 t_2) mapping_2 ...))
-   ,(cons (term (val id_1 (eval-type t_1)))
-          (cons (term (val id_2 (eval-type t_2)))
-                (term (intersect-sorted-intfts (mapping_1 ...) (mapping_2 ...)))))]
+   ,(if (string<? (symbol->string (term id_1))
+                  (symbol->string (term id_2)))
+       (cons (term (val id_1 t_1))
+          (cons (term (val id_2 t_2))
+             (term (intersect-sorted-intfts (mapping_1 ...) (mapping_2 ...)))))
+       (cons (term (val id_2 t_2))
+          (cons (term (val id_1 t_1))
+             (term (intersect-sorted-intfts (mapping_1 ...) (mapping_2 ...))))))
+   ]
   [(intersect-sorted-intfts (mapping_1 ...) ())
    (mapping_1 ...)]
   [(intersect-sorted-intfts () (mapping_2 ...))
@@ -472,10 +479,10 @@
 (define-metafunction L-simple-v1
   sort-intft : ((val id t) ...) -> ((val id t) ...)
   [(sort-intft ((val id t) ...)) 
-   ,(raw-sort-intft (term (id ...)))]
+   ,(raw-sort-intft (term ((val id t) ...)))]
 )
 (define (raw-sort-intft decls) 
-  (sort decls #:key (lambda (x) (symbol->string x)) string<?)
+  (sort decls #:key (lambda (x) (symbol->string (cadr x))) string<?)
 )
 
 
