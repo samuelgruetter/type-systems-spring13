@@ -401,6 +401,15 @@
   
 )
 
+; (subtype t_1 t_2) means that t_1 <: t_2
+; t_1 and t_2 must be evaluated before
+(define-judgment-form
+  L-simple-v1+Γ
+  #:mode (subtype I I)
+  #:contract (subtype t t)
+  [(subtype t_1 t_2)];TODO
+)
+
 ; (eval-type Γ t) evaluates a type expression t in environment Γ
 (define-metafunction L-simple-v1+Γ
   eval-type : Γ t -> t
@@ -437,6 +446,29 @@
   
   [(intersect-ts t_1 t_2) #f] ; incompatible (not "empty type")
 )
+
+; intersects two interface types which do not need to be sorted
+(define-metafunction L-simple-v1
+  intersect-intfts : intft intft -> intft
+  [(intersect-intfts 
+     ((val id_same t_1) (val id_1r t_1r) ...)
+     ((val id_2l t_2l) ... (val id_same t_2) (val id_2r t_2r) ...))
+   ,(cons (term (val id_same (intersect-ts t_1 t_2)))
+          (term (intersect-intfts 
+              ((val id_1r t_1r) ...) 
+              ((val id_2l t_2l) ... (val id_2r t_2r) ...))))]
+  [(intersect-intfts
+     ((val id_1 t_1) (val id_1r t_1r) ...)
+     ((val id_2r t_2r) ...))
+   ,(cons (term (val id_1 t_1))
+          (term (intersect-intfts 
+              ((val id_1r t_1r) ...)
+              ((val id_2r t_2r) ...))))]
+  [(intersect-intfts () ((val id_s t_s) ...))
+   ((val id_s t_s) ...)]
+)
+
+#|
 (define-metafunction L-simple-v1
   intersect-intfts : intft intft -> intft
   [(intersect-intfts intft_1 intft_2)
@@ -484,7 +516,7 @@
 (define (raw-sort-intft decls) 
   (sort decls #:key (lambda (x) (symbol->string (cadr x))) string<?)
 )
-
+|#
 
 ;;; Reduction Relation ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
