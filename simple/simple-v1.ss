@@ -286,7 +286,6 @@
    --------------------------------------- ; (Type of anonymous function)
    (types Γ (=> (id t_1) e) (-> t_1 t_2))]
   
-  ; TODO what if Γ-lookup-val returns #f ??
   [(where t (Γ-lookup-val Γ id))
    ----------------------------------------- ; (Extract val's type from Γ)
    (types Γ id t)]
@@ -407,7 +406,41 @@
   L-simple-v1+Γ
   #:mode (subtype I I)
   #:contract (subtype t t)
-  [(subtype t_1 t_2)];TODO
+  
+  [-------------------
+   (subtype Void Void)]
+  
+  [--------------------
+   (subtype Null Null)]
+  
+  [---------------------
+   (subtype primt primt)]
+  
+  [------------------
+   (subtype intft ())]
+  
+  [(subtype (Γ-lookup-val intft_1 id_2) t_2) ; val is covariant 
+   (subtype intft_1 ((val id_2rest t_2rest) ...))
+   -------------------------------------------------------------
+   (subtype intft_1 ((val id_2 t_2) (val id_2rest t_2rest) ...))]
+  
+  [(subtype t_arg2 t_arg1)
+   (subtype t_ret1 t_ret2)
+   -----------------------------------------------
+   (subtype (-> t_arg1 t_ret1) (-> t_arg2 t_ret2))]
+  
+  [(subtype t_1 t_2)
+   (subtype t_2 t_1)
+   -----------------------------
+   (subtype (var t_1) (var t_2))]
+)
+
+; two types are equal iff each is a subtype of the other
+(define-metafunction L-simple-v1
+  types-equal : t t -> bool
+  [(types-equal t_1 t_2)
+   (judgment-holds (subtype t_1 t_2))
+   (judgment-holds (subtype t_2 t_1))]
 )
 
 ; (eval-type Γ t) evaluates a type expression t in environment Γ
@@ -430,20 +463,30 @@
   [(eval-type Γ (var t))             ; reference cells
    (var (eval-type Γ t))]
 )
+
+; We don't (yet) have union types, but in some special cases, it is still 
+; possible to calculate the union of two types. If not, #f is returned.
+; Types given as argument must be simplified (evaluated) before.
+; Type returned is also simplified.
+(define-metafunction L-simple-v1+Γ
+  union-ts : t t -> t or #f
+  [(union-ts t_1 t_2)
+   t_1
+   (judgment-holds (subtype t_2 t_1))]
+  [(union-ts t_1 t_2)
+   t_2
+   (judgment-holds (subtype t_1 t_2))]
+)
+
 ; types given as argument must be simplified (evaluated) before
 ; type returned is also simplified
 (define-metafunction L-simple-v1
-  intersect-ts : t t -> t or #f
-  
-  [(intersect-ts t t) t]
-  
-  [(intersect-ts (-> t_arg t_ret1) (-> t_arg t_ret2))
-   (-> t_arg (intersect-ts t_ret1 t_ret2))]
-  ; once we have untion types, we can take union on argument type
-  
+  intersect-ts : t t -> t or #f  
+  [(intersect-ts t t) t]  
+  [(intersect-ts (-> t_arg1 t_ret1) (-> t_arg2 t_ret2))
+   (-> (union-ts t_arg1 t_arg2) (intersect-ts t_ret1 t_ret2))]  
   [(intersect-ts intft_1 intft_2)
-   (intersect-intfts intft_1 intft_2)]
-  
+   (intersect-intfts intft_1 intft_2)]  
   [(intersect-ts t_1 t_2) #f] ; incompatible (not "empty type")
 )
 
@@ -467,6 +510,28 @@
   [(intersect-intfts () ((val id_s t_s) ...))
    ((val id_s t_s) ...)]
 )
+
+
+;;; Reduction Relation ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; state = statements to evaluate + values + values of reference cells + ...?
+; TODO :P
+
+(define-extended-language L-simple-v1-Ev L-simple-v1+Γ
+  (p (stat ...))                    ; Program to evaluate
+  (P (e ... E e ...))
+  (E (v E)
+     (E e)
+     (+ v ... E e ...)
+     (if0 E e e)
+     (fix E)
+     hole)
+  (v (λ (x t) e)
+     (fix v)
+     number))
+
+
+; UNUSED ;
 
 #|
 (define-metafunction L-simple-v1
@@ -518,27 +583,6 @@
 )
 |#
 
-;;; Reduction Relation ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-; state = statements to evaluate + values + values of reference cells + ...?
-; TODO :P
-
-(define-extended-language L-simple-v1-Ev L-simple-v1+Γ
-  (p (stat ...))                    ; Program to evaluate
-  (P (e ... E e ...))
-  (E (v E)
-     (E e)
-     (+ v ... E e ...)
-     (if0 E e e)
-     (fix E)
-     hole)
-  (v (λ (x t) e)
-     (fix v)
-     number))
-
-
-; UNUSED ;
-
 #|
 
 ; convert mappings from Γ to interface type, taking only value declarations
@@ -569,14 +613,14 @@
         (Γ-extend Γ d)
         (Γ-extend Γ_outer d) ; current d visible for subsequent d_s
         (d_s ...))]
-) TODO unused?|#
+)|#
 
 
 ; true iff two identifiers are different
 #|(define-metafunction L-simple-v1+Γ
   [(different id_1 id_1) #f]
   [(different id_1 id_2) #t]
-)|# ; TODO unused?
+)|# 
 
 
 ; filter-for-ds filters a list of statements, keeping only declarations
@@ -598,7 +642,7 @@
   #:contract (wf-oc Γ oc intft)
   [(wf-oc Γ oc intft)
    (where intft (calc-oc-type Γ oc))]
-) TODO unused?|#
+)|#
 
 |#
 
