@@ -15,11 +15,11 @@
          (val push_back (-> Int Void))
       ])
       (val newVector (-> Void IntVector) (=> (v Void) (
-         (val fSize (var Int) (Ref 0))
-         (val e0 (var Int) (Ref 0))
-         (val e1 (var Int) (Ref 0))
-         (val e2 (var Int) (Ref 0))
-         (val e3 (var Int) (Ref 0))
+         (val fSize (var Int) (cell 0))
+         (val e0 (var Int) (cell 0))
+         (val e1 (var Int) (cell 0))
+         (val e2 (var Int) (cell 0))
+         (val e3 (var Int) (cell 0))
          
          (val size (=> (v Void) ((sel fSize get)())))
          (val maxSize 4)
@@ -54,6 +54,8 @@
    (ign (increase ((sel v at) 1)))
    
    (println ((sel ((sel v at) 1) get) ()))
+   
+   0 ; return value of program
 }
 )))
 

@@ -6,8 +6,6 @@
 ;;; The Grammar ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-language L-simple-v1
-  (prog                       ; program 
-    stat)                     ;    one statement
   (stat                       ; statement
     (ign e)                   ;   `(ign e)` instead of `e;` : ignore void
     { stat stat ... }         ;   block of statements
@@ -66,6 +64,8 @@
     (if e e e)                ;   if then else returning a value
     binop                     ;   binary operator expression
     (sel e id)                ;   e.id
+    (cell e)                  ;   a cell storing mutable data. (cell e) is of 
+                              ;     type (var t) if e is of type t
     literal)                  ;   literal
   
   (oc                         ; object construction
@@ -159,16 +159,6 @@
 
 
 ;;; Typechecking ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-; (wf-prog prog) means that prog is a well-formed program
-(define-judgment-form
-  L-simple-v1+Γ
-  #:mode (wf-prog I)
-  #:contract (wf-prog prog)
-  [(wf-prog prog)
-   ; just check if prog is a well-formed statement in the empty enviroment
-   (side-condition (is-wf-stat () prog))]
-)
 
 ; (wf-stat Γ stat) means that in Γ, stat is a well-formed statement
 (define-judgment-form
@@ -517,19 +507,77 @@
 ; state = statements to evaluate + values + values of reference cells + ...?
 ; TODO :P
 
-(define-extended-language L-simple-v1-Ev L-simple-v1+Γ
-  (p (stat ...))                    ; Program to evaluate
-  (P (e ... E e ...))
-  (E (v E)
-     (E e)
-     (+ v ... E e ...)
-     (if0 E e e)
-     (fix E)
-     hole)
-  (v (λ (x t) e)
-     (fix v)
-     number))
+; TODO make sure that anonymous functions passed anywhere obey lexical scoping
 
+(define-extended-language L-simple-v1-Ev L-simple-v1+Γ
+  (se                         ; simplified (evaluated) expression ("value")
+    sre                       ;   simplified reference (= "not primitive") expr
+    literal)                  ;   simplified expression of primitive type
+  (sre                        ; simplified reference expression
+    soc                       ;   simplified object construction
+    (cid natural)             ;   reference to a cell, cid = cell id
+    (=> (id t) e))            ;   anonymous function
+  (soc                        ; simplified object construction
+    ((val id se) ...))        ;   types are erased
+
+  (vv                         ; val value
+    (id se))                  ;   maps an id to its value
+  (cv                         ; cell value
+    (natural se))             ;   maps a natural-id to the current value of cell
+
+  (state                      ; state of program execution
+    (E (vv ...) (cv ...)))    ;   expr to evaluate, val values, cell values
+  
+  (S                          ; statement with a hole to evaluate
+    (ign E)                   ;   `(ign e)` instead of `e;` : ignore void
+    { S stat ... }            ;   evaluate one after the other statement
+    (val id t E)              ;   typed value declaration
+    (val id E)                ;   untyped value declaration
+    (println E)               ;   print line
+    (if E stat)               ;   if-then with no return value
+    (if E stat stat)          ;   if-then-else with no return value
+    (while E stat))           ;   while loop
+  
+  (E                          ; expression with a hole to evaluate
+    ((=> (id t) e) E)         ;   1) simplify function 2) simpl. arg 3) apply
+    ( (val id_s se_s) ...     ;   object construction with evaluated part,
+      (val id t E)            ;     part to evaluate,
+      d ...)                  ;     and not yet evaluated part
+    {S ... e}                 ;   block expression
+    (if E e e)                ;   if
+    (sel E id)                ;   e.id
+    (cell E)                  ;   new cell storing mutable value
+    (&& E e)                  ;   logical and
+    (&& #t E)                 ;     lazy evaluation (only if first is true)
+    (|| E e)                  ;   logical or
+    (|| #f E)                 ;     lazy
+    (== E e)                  ;   equality
+    (== se E)                 ;   
+    (< E e)                   ;   less than for integers
+    (< number E)              ;   
+    (+ E e)                   ;   integer addition or string concatenation
+    (+ se E)                  ;   
+    (- E e)                   ;   integer subtraction
+    (- number E)              ;   
+    (* E e)                   ;   integer multiplication
+    (* number E)              ;   
+    (/ E e)                   ;   integer division
+    (/ number E)              ;   
+    hole)                     ;   hole
+)
+
+(define red
+  (reduction-relation
+    L-simple-v1-Ev
+    #:domain state
+    (--> (in-hole state (if #t e_1 e_2))
+         (in-hole state e_1)
+         "if#t")
+    (--> (in-hole state (if #f e_1 e_2))
+         (in-hole state e_2)
+         "if#f")
+   ; TODO
+))
 
 ; UNUSED ;
 
@@ -671,3 +719,17 @@
    (where t (Γ-lookup-type Γ id))]
 )
 |#
+
+  
+#|
+; (wf-prog prog) means that prog is a well-formed program
+(define-judgment-form
+  L-simple-v1+Γ
+  #:mode (wf-prog I)
+  #:contract (wf-prog prog)
+  [(wf-prog prog)
+   ; just check if prog is a well-formed statement in the empty enviroment
+   (side-condition (is-wf-stat () prog))]
+)
+|#
+  
