@@ -504,9 +504,6 @@
 
 ;;; Reduction Relation ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; state = statements to evaluate + values + values of reference cells + ...?
-; TODO :P
-
 ; TODO make sure that anonymous functions passed anywhere obey lexical scoping
 
 (define-extended-language L-simple-v1-Ev L-simple-v1+Γ
@@ -516,7 +513,7 @@
   (sre                        ; simplified reference expression
     soc                       ;   simplified object construction
     (cid natural)             ;   reference to a cell, cid = cell id
-    (=> (id t) e))            ;   anonymous function
+    (cl id e (vv ...)))       ;   anonymous function (closure) with environment
   (soc                        ; simplified object construction
     ((val id se) ...))        ;   types are erased
 
@@ -539,7 +536,7 @@
     (while E stat))           ;   while loop
   
   (E                          ; expression with a hole to evaluate
-    ((=> (id t) e) E)         ;   1) simplify function 2) simpl. arg 3) apply
+    ((cl id e (vv ...)) E)    ;   1) simplify function 2) simpl. arg 3) apply
     ( (val id_s se_s) ...     ;   object construction with evaluated part,
       (val id t E)            ;     part to evaluate,
       d ...)                  ;     and not yet evaluated part
@@ -570,12 +567,75 @@
   (reduction-relation
     L-simple-v1-Ev
     #:domain state
-    (--> (in-hole state (if #t e_1 e_2))
+    (--> (in-hole state (if true e_1 e_2))
          (in-hole state e_1)
-         "if#t")
-    (--> (in-hole state (if #f e_1 e_2))
+         "if-t")
+    (--> (in-hole state (if false e_1 e_2))
          (in-hole state e_2)
-         "if#f")
+         "if-f")
+    
+    (--> (in-hole (E (vv ...) (cv ...)) (cell se))
+         (in-hole (E (vv ...) (cv ...)) (cid n))
+         (where n ()) ; TODO
+         "new-cell")
+    
+    (--> (in-hole state (&& false e    )) (in-hole state false) "&&f"  )
+    (--> (in-hole state (&& true  false)) (in-hole state false) "&&tf" )
+    (--> (in-hole state (&& true  true )) (in-hole state true ) "&&tt" )
+    (--> (in-hole state (|| true  e    )) (in-hole state true ) "||t"  )
+    (--> (in-hole state (|| false true )) (in-hole state true ) "||ft" )
+    (--> (in-hole state (|| false false)) (in-hole state false) "||ff" )
+    (--> (in-hole state (== true  true )) (in-hole state true ) "==tt" )
+    (--> (in-hole state (== true  false)) (in-hole state false) "==tf" )
+    (--> (in-hole state (== false true )) (in-hole state false) "==ft" )
+    (--> (in-hole state (== false false)) (in-hole state true ) "==ff" )
+    
+    (--> (in-hole state (== string string)) 
+         (in-hole state true)
+         "==ss")
+    (--> (in-hole state (== string_1 string_2)) 
+         (in-hole state false)
+         (side-condition (not (equal? (term string_1) (term string_2))))
+         "==s1s2")
+    (--> (in-hole state (== number number)) 
+         (in-hole state true)
+         "==nn")
+    (--> (in-hole state (== number_1 number_2)) 
+         (in-hole state false)
+         (side-condition (not (equal? (term number_1) (term number_2))))
+         "==n1n2")    
+    (--> (in-hole state (< number_1 number_2)) 
+         (in-hole state true) 
+         (side-condition (< (term number_1) (term number_2)))
+         "<n1n2")
+    (--> (in-hole state (< number_1 number_2)) 
+         (in-hole state false) 
+         (side-condition (not (< (term number_1) (term number_2))))
+         "!<n1n2")
+    
+    (--> (in-hole state (+ number_1 number_2)) 
+         (in-hole state ,(+ (term number_1) (term number_2)))
+         "+n1n2")
+    (--> (in-hole state (+ number string)) 
+         (in-hole state ,(string-append (~a (term number)) (term string)))
+         "+ns")
+    (--> (in-hole state (+ string number)) 
+         (in-hole state ,(string-append (term string) (~a (term number))))
+         "+sn")
+    (--> (in-hole state (+ string_1 string_2)) 
+         (in-hole state ,(string-append (term string_1) (term string_2)))
+         "+s1s2")
+    
+    (--> (in-hole state (- number_1 number_2)) 
+         (in-hole state ,(- (term number_1) (term number_2)))
+         "-n1n2")
+    (--> (in-hole state (* number_1 number_2)) 
+         (in-hole state ,(* (term number_1) (term number_2)))
+         "*n1n2")
+    (--> (in-hole state (/ number_1 number_2)) 
+         (in-hole state ,(/ (term number_1) (term number_2)))
+         "/n1n2")
+    
    ; TODO
 ))
 
