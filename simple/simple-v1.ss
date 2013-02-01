@@ -267,10 +267,21 @@
   #:mode (types I I O)
   #:contract (types Γ e t)
  
-  [(types Γ e_1 (-> t_2 t_3))
-   (types Γ e_2 t_2)
-   -------------------------- ; (Function Application)
-   (types Γ (e_1 e_2) t_3)]
+  ; We cannot write this rule, because redex cannot guess t_2:
+  ;
+  ; [(types Γ e t_1)
+  ; (side-condition (subtype t_1 t_2))
+  ; ---------------------------------- ; (subsumption)
+  ; (types Γ e t_2)]
+  ;
+  ; Instead, we have to make the function application rule more powerful,
+  ; but that's sufficient.
+  
+  [(types Γ e_fun (-> t_arg2 t_ret))
+   (types Γ e_arg t_arg1)
+   (subtype t_arg1 t_arg2)
+   ------------------------------ ; (Function Application)
+   (types Γ (e_fun e_arg) t_ret)]
  
   [(types (id : t_1 Γ) e t_2)
    --------------------------------------- ; (Type of anonymous function)
@@ -319,6 +330,14 @@
   [(where t (Γ-lookup-val (calc-type e) id))
    ------------------------------------------  ; (e.id)
    (types Γ (sel e id) t)]
+  
+  [(types Γ e (var t))
+   ---------------------------------- ; (cell.get)
+   (types Γ (sel e get) (-> Void t))]
+  
+  [(types Γ e (var t))
+   ---------------------------------- ; (cell.set)
+   (types Γ (sel e set) (-> t Void))]
     
   [(types Γ e_1 Int)
    (types Γ e_2 Int)
@@ -513,6 +532,8 @@
   (sre                        ; simplified reference expression
     soc                       ;   simplified object construction
     (cid natural)             ;   reference to a cell, cid = cell id
+    (getter natural)          ;   get function of a cell
+    (setter natural)          ;   set function of a cell
     (cl id e (vv ...)))       ;   anonymous function (closure) with environment
   (soc                        ; simplified object construction
     ((val id se) ...))        ;   types are erased
@@ -533,13 +554,17 @@
     (println E)               ;   print line
     (if E stat)               ;   if-then with no return value
     (if E stat stat)          ;   if-then-else with no return value
-    (while E stat))           ;   while loop
+    (while E stat)            ;   while loop
+    stat-done)                ;   a "done" (executed) statement
   
   (E                          ; expression with a hole to evaluate
     ((cl id e (vv ...)) E)    ;   1) simplify function 2) simpl. arg 3) apply
     ( (val id_s se_s) ...     ;   object construction with evaluated part,
       (val id t E)            ;     part to evaluate,
       d ...)                  ;     and not yet evaluated part
+    ( (val id_s se_s) ...     ;   dito, but
+      (val id E)              ;     val decl is untyped
+      d ...)                  ;
     {S ... e}                 ;   block expression
     (if E e e)                ;   if
     (sel E id)                ;   e.id
@@ -567,6 +592,59 @@
   (reduction-relation
     L-simple-v1-Ev
     #:domain state
+    
+    (--> (in-hole (E (vv_env ... ) (cv ...)) 
+                  ((cl id e (vv_cl ...)) se_arg))
+         (in-hole (E (vv_env ... vv_cl ... (id se_arg) (cv ...))) 
+                  e)
+         ) ; TODO fresh names / capture /substitution...
+         "apply")
+    
+    (--> (in-hole (E (vv ...) (cv ...)) (=> (id t) e))
+         (in-hole (E (vv ...) (cv ...)) (cl id e (vv ...)))
+         "new-cl") ; closure creation
+    
+    (--> (in-hole state ( (val id_s se_s) ...
+                          (type id t)
+                          d ...))
+         (in-hole state ( (val id_s se_s) ...
+                          d ...))
+         "oc-t") ; object construction ignore type declaration
+    
+    (--> (in-hole (E (vv ...) (cv ...)) ( (val id_s se_s) ...
+                                          (val id se)
+                                          d ...))
+         (in-hole (E (vv ... (id se)) (cv ...)) ( (val id_s se_s) ... 
+                                                  (val id se)
+                                                  d ...))
+         "oc-utv") ; object construction untyped value
+    (--> (in-hole (E (vv ...) (cv ...)) ( (val id_s se_s) ...
+                                          (val id t se)
+                                          d ...))
+         (in-hole (E (vv ... (id se)) (cv ...)) ( (val id_s se_s) ... 
+                                                  (val id se)
+                                                  d ...))
+         "oc-tv") ; object construction typed value
+    
+    (--> (in-hole state {(type id t) stat ...})
+         (in-hole state {stat ...})
+         "{t}") ; ignore type declaration inside block statement
+    (--> (in-hole state {(type id t) stat ... e})
+         (in-hole state {stat ... e})
+         "{t-e}") ; ignore type declaration inside block expression
+    (--> (in-hole state {stat-done})
+         (in-hole state stat-done)
+         "{}")
+    (--> (in-hole state {se})
+         (in-hole state se)
+         "{se}")
+    (--> (in-hole state {stat-done stat ...})
+         (in-hole state {stat ...})
+         "{sd}") ; stat-done in block statement
+    (--> (in-hole state {stat-done stat ... e})
+         (in-hole state {stat ... e})
+         "{sd-e}") ; stat-done in block expression
+    
     (--> (in-hole state (if true e_1 e_2))
          (in-hole state e_1)
          "if-t")
@@ -574,9 +652,37 @@
          (in-hole state e_2)
          "if-f")
     
+    (--> (in-hole state (sel ( (val id_before se_before) ... 
+                               (val id_req se_req) 
+                               (val id_after se_after) ...)
+                             id_req))
+         (in-hole state se_req)
+         "sel")
+    
+    (--> (in-hole (E (vv ...) (cv_before ... (natural se) cv_after ...))
+                  (sel (cid natural) get))
+         (in-hole (E (vv ...) (cv_before ... (natural se) cv_after ...))
+                  (getter natural))
+         "cell.get")
+    (--> (in-hole (E (vv ...) (cv_before ... (natural se) cv_after ...))
+                  (sel (cid natural) set))
+         (in-hole (E (vv ...) (cv_before ... (natural se) cv_after ...))
+                  (setter natural))
+         "cell.set")
+    (--> (in-hole (E (vv ...) (cv_before ... (natural se) cv_after ...))
+                  ((getter natural) ()))
+         (in-hole (E (vv ...) (cv_before ... (natural se) cv_after ...))
+                  se)
+         "apply-get")
+    (--> (in-hole (E (vv ...) (cv_before ... (natural se_old) cv_after ...))
+                  ((setter natural) se_new))
+         (in-hole (E (vv ...) (cv_before ... (natural se_new) cv_after ...))
+                  void)
+         "apply-set")
+    
     (--> (in-hole (E (vv ...) (cv ...)) (cell se))
-         (in-hole (E (vv ...) (cv ...)) (cid n))
-         (where n ()) ; TODO
+         (in-hole (E (vv ...) (cv ... (n se))) (cid n))
+         (where n (new-cid (cv ...)))
          "new-cell")
     
     (--> (in-hole state (&& false e    )) (in-hole state false) "&&f"  )
@@ -638,6 +744,15 @@
     
    ; TODO
 ))
+
+; returns lowest natural not used as id in list of cell values
+; assumes that it is sorted by ascending id
+(define-metafunction L-simple-v1-Ev
+  new-cid : (cv ...) -> natural
+  [(new-cid ()) 0]
+  [(new-cid ((natural_before se_before) ... (natural_last se_last)))
+   ,(+ (term natural_last) 1)]
+)
 
 ; UNUSED ;
 
