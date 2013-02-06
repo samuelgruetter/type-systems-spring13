@@ -112,6 +112,8 @@
     (type id t)]             ;   (myTypeAlias -> aType)
   [Γ                         ; typing environment
     (mapping ...)]           ;   list of mappings
+  [t-or-#f                   ; a type or #f, meaning that no type was found
+    t #f]
 )
 (define-metafunction L-simple-v1+Γ
   Γ-lookup-mapping : Γ id -> mapping or #f
@@ -124,7 +126,7 @@
   [(Γ-lookup-mapping () id_req) #f]
 )
 (define-metafunction L-simple-v1+Γ
-  Γ-lookup-val : Γ id -> t or #f
+  Γ-lookup-val : Γ id -> t-or-#f
   [(Γ-lookup-val (mapping_s ... (val id_req t_req)) id_req) 
     t_req]
   [(Γ-lookup-val (mapping_s ... (val id_last t_last)) id_req)
@@ -132,7 +134,7 @@
   [(Γ-lookup-val () id_req) #f]
 )
 (define-metafunction L-simple-v1+Γ
-  Γ-lookup-type : Γ id -> t or #f
+  Γ-lookup-type : Γ id -> t-or-#f
   [(Γ-lookup-type (mapping_s ... (type id_req t_req)) id_req) 
     t_req]
   [(Γ-lookup-type (mapping_s ... (type id_last t_last)) id_req)
@@ -173,7 +175,7 @@
    (side-condition (is-wf-stat Γ stat))]
 )
 (define-metafunction L-simple-v1+Γ
-  is-wf-stat : Γ stat -> bool
+  is-wf-stat : Γ stat -> boolean
   [(is-wf-stat Γ d)                         ; view declaration as statement
    (is-wf-d Γ d)]
   [(is-wf-stat Γ (ign e)) #t                ; ign-statement
@@ -214,7 +216,7 @@
    (side-condition (is-wf-d Γ d))]
 )
 (define-metafunction L-simple-v1+Γ
-  is-wf-d : Γ d -> bool
+  is-wf-d : Γ d -> boolean
   [(is-wf-d Γ (val id t e)) #t            ; typed val decl
    (where t (calc-type Γ e))]
   [(is-wf-d Γ (val id e)) #t              ; untyped val decl
@@ -226,15 +228,14 @@
 ; (calc-oc-type Γ oc) returns the interface type of object construction oc
 ; also typechecks rhs of declarations
 (define-metafunction L-simple-v1+Γ
-  calc-oc-type : Γ oc -> intft or #f
+  calc-oc-type : Γ oc -> intft
   [(calc-oc-type Γ ()) []]
   [(calc-oc-type Γ (d d_s ...))
-   (if (is-wf-d Γ d)
-       ; Γs have the same form as intfts :)
-       (Γ-extend (calc-oc-type Γ_new (d_s ...)) mp)
-       #f)
-   (where Γ_new (Γ-extend Γ mp))
-   (where mp (d-to-mapping d Γ))]
+   ; Γs have the same form as intfts :)
+   (Γ-extend (calc-oc-type Γ_new (d_s ...)) mapping)
+   (judgment-holds (wf-d Γ d))
+   (where Γ_new (Γ-extend Γ mapping))
+   (where mapping (d-to-mapping d Γ))]
 )
 
 ; converts a value or type declaration to a mapping which can be stored in a Γ
@@ -271,7 +272,7 @@
   ; We cannot write this rule, because redex cannot guess t_2:
   ;
   ; [(types Γ e t_1)
-  ; (side-condition (subtype t_1 t_2))
+  ; (side-condition (subtype Γ t_1 t_2))
   ; ---------------------------------- ; (subsumption)
   ; (types Γ e t_2)]
   ;
@@ -280,7 +281,7 @@
   
   [(types Γ e_fun (-> t_arg2 t_ret))
    (types Γ e_arg t_arg1)
-   (subtype t_arg1 t_arg2)
+   (subtype Γ t_arg1 t_arg2)
    ------------------------------ ; (Function Application)
    (types Γ (e_fun e_arg) t_ret)]
  
@@ -350,15 +351,15 @@
    -------------------------- ; (concat Int and Str to Str)
    (types Γ (+ e_1 e_2) Str)]
  
-  [(types Γ e_1 String)
+  [(types Γ e_1 Str)
    (types Γ e_2 Int)
    -------------------------- ; (concat Str and Int to Str)
-   (types Γ (+ e_1 e_2) String)]
+   (types Γ (+ e_1 e_2) Str)]
   
-  [(types Γ e_1 String)
-   (types Γ e_2 String)
+  [(types Γ e_1 Str)
+   (types Γ e_2 Str)
    -------------------------- ; (concat two strings)
-   (types Γ (+ e_1 e_2) String)]
+   (types Γ (+ e_1 e_2) Str)]
   
   [(types Γ e_1 Bool)
    (types Γ e_2 Bool)
@@ -370,8 +371,8 @@
    -------------------------- ; (logical or)
    (types Γ (|| e_1 e_2) Bool)]
   
-  [(types Γ e_1 String)
-   (types Γ e_2 String)
+  [(types Γ e_1 Str)
+   (types Γ e_2 Str)
    -------------------------- ; (String equality)
    (types Γ (== e_1 e_2) Bool)]
   
@@ -410,52 +411,67 @@
   
 )
 
-; (subtype t_1 t_2) means that t_1 <: t_2
+; (sub t_1 t_2) means that t_1 <: t_2
 ; t_1 and t_2 must be evaluated before
 (define-judgment-form
   L-simple-v1+Γ
-  #:mode (subtype I I)
-  #:contract (subtype t t)
+  #:mode (sub I I)
+  ; Also accepts #f as arg, because that's what unsuccessful lookup returns,
+  ; but if one or both args are #f, the judgment never holds.
+  #:contract (sub t-or-#f t-or-#f)
   
-  [-------------------
-   (subtype Void Void)]
+  [----------------
+   (sub Void Void)]
   
-  [--------------------
-   (subtype Null Null)]
-  
-  [---------------------
-   (subtype primt primt)]
+  [----------------
+   (sub Null Null)]
   
   [------------------
-   (subtype intft [])]
+   (sub primt primt)]
   
-  [(subtype (Γ-lookup-val intft_1 id_2) t_2) ; val is covariant 
-   (subtype intft_1 ((val id_2rest t_2rest) ...))
-   -------------------------------------------------------------
-   (subtype intft_1 ((val id_2 t_2) (val id_2rest t_2rest) ...))]
+  [---------------
+   (sub intft [])]
   
-  [(subtype t_arg2 t_arg1)
-   (subtype t_ret1 t_ret2)
-   -----------------------------------------------
-   (subtype (-> t_arg1 t_ret1) (-> t_arg2 t_ret2))]
+  [(sub (Γ-lookup-val intft_1 id_2) t_2) ; val is covariant 
+   (sub intft_1 [(val id_2rest t_2rest) ...])
+   ----------------------------------------------------------
+   (sub intft_1 [(val id_2 t_2) (val id_2rest t_2rest) ...])]
   
-  [(subtype t_1 t_2)
-   (subtype t_2 t_1)
+  [(sub t_arg2 t_arg1)
+   (sub t_ret1 t_ret2)
+   --------------------------------------------
+   (sub (-> t_arg1 t_ret1) (-> t_arg2 t_ret2))]
+  
+  [(sub t_1 t_2)
+   (sub t_2 t_1)
    -----------------------------
-   (subtype (var t_1) (var t_2))]
+   (sub (var t_1) (var t_2))]
+)
+
+
+; (subtype Γ t_1 t_2) means that in Γ, t_1 <: t_2
+; t_1 and t_2 are evaluated in Γ
+(define-judgment-form
+  L-simple-v1+Γ
+  #:mode (subtype I I I)
+  #:contract (subtype Γ t t)
+  [(subtype Γ t_1 t_2)
+   (sub (eval-type Γ t_1) (eval-type Γ t_2))]
 )
 
 ; two types are equal iff each is a subtype of the other
+; types must be simplified before
 (define-metafunction L-simple-v1+Γ
-  types-equal : t t -> bool
+  types-equal : t t -> boolean
   [(types-equal t_1 t_2) #t
-   (judgment-holds (subtype t_1 t_2))
-   (judgment-holds (subtype t_2 t_1))]
+   (judgment-holds (sub t_1 t_2))
+   (judgment-holds (sub t_2 t_1))]
+  [(types-equal t_1 t_2) #f]
 )
 
 ; (is-wf-t Γ t) rejects e.g. bad type intersections
 (define-metafunction L-simple-v1+Γ
-  is-wf-t : Γ t -> bool
+  is-wf-t : Γ t -> boolean
   [(is-wf-t Γ t) #t
    (where t_2 (eval-type Γ t))]
 )
@@ -482,29 +498,35 @@
 )
 
 ; We don't (yet) have union types, but in some special cases, it is still 
-; possible to calculate the union of two types. If not, #f is returned.
+; possible to calculate the union of two types.
 ; Types given as argument must be simplified (evaluated) before.
 ; Type returned is also simplified.
 (define-metafunction L-simple-v1+Γ
-  union-ts : t t -> t or #f
+  union-ts : t t -> t
   [(union-ts t_1 t_2)
    t_1
-   (judgment-holds (subtype t_2 t_1))]
+   (judgment-holds (sub t_2 t_1))]
   [(union-ts t_1 t_2)
    t_2
-   (judgment-holds (subtype t_1 t_2))]
+   (judgment-holds (sub t_1 t_2))]
 )
 
 ; types given as argument must be simplified (evaluated) before
 ; type returned is also simplified
 (define-metafunction L-simple-v1
-  intersect-ts : t t -> t or #f  
-  [(intersect-ts t t) t]  
+  intersect-ts : t t -> t
+  [(intersect-ts t_1 t_2)
+   t_1
+   (judgment-holds (sub t_1 t_2))]
+  [(intersect-ts t_1 t_2)
+   t_2
+   (judgment-holds (sub t_2 t_1))]
   [(intersect-ts (-> t_arg1 t_ret1) (-> t_arg2 t_ret2))
    (-> (union-ts t_arg1 t_arg2) (intersect-ts t_ret1 t_ret2))]  
   [(intersect-ts intft_1 intft_2)
    (intersect-intfts intft_1 intft_2)]  
-  [(intersect-ts t_1 t_2) #f] ; incompatible (not "empty type")
+  ; It can happen that two types are incompatible for intersection,
+  ; e.g. Str and Int. In such cases, there is no match, and it crashes.
 )
 
 ; intersects two interface types which do not need to be sorted
