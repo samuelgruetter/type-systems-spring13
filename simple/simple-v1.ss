@@ -95,6 +95,10 @@
 
 ;;; Technical ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+; Note: In English, both "judgment" and "judgement" are correct, but in redex,
+; only "judgment" is correct. Avoid being confused by weird error messages due
+; to misspelling that word.
+
 ; typing environment Γ
 ; Usually, Γ is only used to store mappings of the form (myValName -> itsType).
 ; But here, we also use it to store mappings of the form (myTypeAlias -> aType).
@@ -170,37 +174,34 @@
 )
 (define-metafunction L-simple-v1+Γ
   is-wf-stat : Γ stat -> bool
-  [(is-wf-stat Γ d)                      ; view declaration as statement
+  [(is-wf-stat Γ d)                         ; view declaration as statement
    (is-wf-d Γ d)]
-  [(is-wf-stat Γ (ign e))                ; ign-statement
+  [(is-wf-stat Γ (ign e)) #t                ; ign-statement
    (judgment-holds (types Γ e Void))] 
-  [(is-wf-stat Γ {})                     ; empty statement block
+  [(is-wf-stat Γ {})                        ; empty statement block
    #t]
-  [(is-wf-stat Γ {d stat_after ...})     ; statement block beginning with d
+  [(is-wf-stat Γ {d stat_after ...})        ; statement block beginning with d
    (and
      (is-wf-d Γ d)
      (is-wf-stat Γ_new {stat_after ...}))
    (where Γ_new (Γ-extend Γ (d-to-mapping d Γ)))]
-  [(is-wf-stat Γ {stat stat_after ...})  ; statement block not beginning with d
+  [(is-wf-stat Γ {stat stat_after ...})     ; stat block not beginning with d
    (and
      (is-wf-stat Γ stat)
      (is-wf-stat Γ {stat_after ...}))]  
-  [(is-wf-stat Γ (println e))            ; println a primitive type
-   (judgement-holds (types Γ e primt))]
-  [(is-wf-stat Γ (if e stat))            ; if-then with no return value
+  [(is-wf-stat Γ (println e)) #t            ; println a primitive type
+   (judgment-holds (types Γ e Bool))]
+  [(is-wf-stat Γ (if e stat))               ; if-then with no return value
+   (is-wf-stat Γ stat)
+   (judgment-holds (types Γ e Bool))]
+   [(is-wf-stat Γ (if e stat_1 stat_2))     ; if-then-else with no return value
     (and
-      (judgement-holds (types Γ e Bool))
-      (is-wf-stat Γ stat))] 
-  [(is-wf-stat Γ (if e stat_1 stat_2))   ; if-then-else with no return value
-     (and
-       (judgement-holds (types Γ e Bool))
-       (and
-         (is-wf-stat Γ stat_1)
-         (is-wf-stat Γ stat_2)))]
-  [(is-wf-stat Γ (while e stat))         ; while
-    (and
-      (judgement-holds (types Γ e Bool))
-      (is-wf-stat Γ stat))]
+      (is-wf-stat Γ stat_1)
+      (is-wf-stat Γ stat_2))
+    (judgment-holds (types Γ e Bool))]
+  [(is-wf-stat Γ (while e stat))            ; while
+   (is-wf-stat Γ stat)
+   (judgment-holds (types Γ e Bool))]
 )
 
 ; (wf-d Γ d) means that in Γ, d is a well-formed declaration
@@ -214,10 +215,10 @@
 )
 (define-metafunction L-simple-v1+Γ
   is-wf-d : Γ d -> bool
-  [(is-wf-d Γ (val id t e))               ; typed val decl
-   (judgement-holds (types Γ e t))]
-  [(is-wf-d Γ (val id e))                 ; untyped val decl
-   (judgement-holds (types Γ e t_unbound))]
+  [(is-wf-d Γ (val id t e)) #t            ; typed val decl
+   (where t (calc-type Γ e))]
+  [(is-wf-d Γ (val id e)) #t              ; untyped val decl
+   (where t_unused (calc-type Γ e))]
   [(is-wf-d Γ (type id t))                ; type decl
    (is-wf-t Γ t)]
 )
@@ -253,8 +254,8 @@
 (define-metafunction L-simple-v1+Γ
   calc-e-type : Γ e -> t
   [(calc-e-type Γ e)
-   ;t (where t (judgement-holds (types Γ e t)))]
-   (head-of-singleton-list (judgment-holds (types Γ e t) t))]
+   ;t (where t (judgment-holds (types Γ e t)))]
+   (head-of-singleton-list ,(judgment-holds (types Γ e t) t))]
 )
 (define-metafunction L-simple-v1+Γ
   head-of-singleton-list : (any ...) -> any
@@ -426,7 +427,7 @@
    (subtype primt primt)]
   
   [------------------
-   (subtype intft ())]
+   (subtype intft [])]
   
   [(subtype (Γ-lookup-val intft_1 id_2) t_2) ; val is covariant 
    (subtype intft_1 ((val id_2rest t_2rest) ...))
@@ -445,11 +446,18 @@
 )
 
 ; two types are equal iff each is a subtype of the other
-(define-metafunction L-simple-v1
+(define-metafunction L-simple-v1+Γ
   types-equal : t t -> bool
-  [(types-equal t_1 t_2)
+  [(types-equal t_1 t_2) #t
    (judgment-holds (subtype t_1 t_2))
    (judgment-holds (subtype t_2 t_1))]
+)
+
+; (is-wf-t Γ t) rejects e.g. bad type intersections
+(define-metafunction L-simple-v1+Γ
+  is-wf-t : Γ t -> bool
+  [(is-wf-t Γ t) #t
+   (where t_2 (eval-type Γ t))]
 )
 
 ; (eval-type Γ t) evaluates a type expression t in environment Γ
@@ -597,7 +605,7 @@
                   ((cl id e (vv_cl ...)) se_arg))
          (in-hole (E (vv_env ... vv_cl ... (id se_arg) (cv ...))) 
                   e)
-         ) ; TODO fresh names / capture /substitution...
+          ; TODO fresh names / capture /substitution...
          "apply")
     
     (--> (in-hole (E (vv ...) (cv ...)) (=> (id t) e))
