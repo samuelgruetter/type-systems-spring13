@@ -12,8 +12,7 @@
     d                         ;   type or value declaration
     (println e)               ;   print line
     (if e stat)               ;   if-then with no return value
-    (if e stat stat)          ;   if-then-else with no return value
-    (while e stat))           ;   while loop
+    (if e stat stat))          ;   if-then-else with no return value
   
   (d                          ; declaration
     vd                        ;   value declaration
@@ -186,7 +185,7 @@
    (and
      (is-wf-d Γ d)
      (is-wf-stat Γ_new {stat_after ...}))
-   (where Γ_new (Γ-extend Γ (d-to-mapping d Γ)))]
+   (where Γ_new (Γ-extend Γ (d-to-mapping Γ d)))]
   [(is-wf-stat Γ {stat stat_after ...})     ; stat block not beginning with d
    (and
      (is-wf-stat Γ stat)
@@ -201,9 +200,6 @@
       (is-wf-stat Γ stat_1)
       (is-wf-stat Γ stat_2))
     (judgment-holds (types Γ e Bool))]
-  [(is-wf-stat Γ (while e stat))            ; while
-   (is-wf-stat Γ stat)
-   (judgment-holds (types Γ e Bool))]
 )
 
 ; (wf-d Γ d) means that in Γ, d is a well-formed declaration
@@ -218,9 +214,9 @@
 (define-metafunction L-simple-v1+Γ
   is-wf-d : Γ d -> boolean
   [(is-wf-d Γ (val id t e)) #t            ; typed val decl
-   (where t (calc-type Γ e))]
+   (judgment-holds (subtype Γ (calc-e-type Γ e) t))]
   [(is-wf-d Γ (val id e)) #t              ; untyped val decl
-   (where t_unused (calc-type Γ e))]
+   (where t_unused (calc-e-type Γ e))]
   [(is-wf-d Γ (type id t))                ; type decl
    (is-wf-t Γ t)]
 )
@@ -235,32 +231,31 @@
    (Γ-extend (calc-oc-type Γ_new (d_s ...)) mapping)
    (judgment-holds (wf-d Γ d))
    (where Γ_new (Γ-extend Γ mapping))
-   (where mapping (d-to-mapping d Γ))]
+   (where mapping (d-to-mapping Γ d))]
 )
 
 ; converts a value or type declaration to a mapping which can be stored in a Γ
 ; Γ_outer is the context needed to construct the type of untyped vds
 (define-metafunction L-simple-v1+Γ
-  d-to-mapping : d Γ_outer -> mapping
-  [(d-to-mapping (val id t e) Γ_outer)    ; typed val decl
+  d-to-mapping : Γ_outer d -> mapping
+  [(d-to-mapping Γ_outer (val id t e))    ; typed val decl
    (val id t)]
-  [(d-to-mapping (val id e) Γ_outer)      ; untyped val decl
+  [(d-to-mapping Γ_outer (val id e))      ; untyped val decl
    (val id t)
    (where t (calc-e-type Γ_outer e))]
-  [(d-to-mapping (type id t) Γ_outer)     ; type decl
+  [(d-to-mapping Γ_outer (type id t))     ; type decl
    (type id t)]
 )
 
 ; (calc-e-type Γ e) returns the type of expression e
 (define-metafunction L-simple-v1+Γ
   calc-e-type : Γ e -> t
-  [(calc-e-type Γ e)
-   ;t (where t (judgment-holds (types Γ e t)))]
-   (head-of-singleton-list ,(judgment-holds (types Γ e t) t))]
-)
-(define-metafunction L-simple-v1+Γ
-  head-of-singleton-list : (any ...) -> any
-  [(head-of-singleton-list (any)) any]
+  [(calc-e-type Γ e) t_1
+   (where (t_1) ,(judgment-holds (types Γ e t) t))]
+  ; sometimes it finds the same type in two different ways:
+  ; TODO why, and can it also be >2x?
+  [(calc-e-type Γ e) t_1
+   (where (t_1 t_1) ,(judgment-holds (types Γ e t) t))]
 )
 
 ; (types Γ e t) means that in Γ, e is of type t
@@ -285,9 +280,9 @@
    ------------------------------ ; (Function Application)
    (types Γ (e_fun e_arg) t_ret)]
  
-  [(types (id : t_1 Γ) e t_2)
-   --------------------------------------- ; (Type of anonymous function)
-   (types Γ (=> (id t_1) e) (-> t_1 t_2))]
+  [(types (mapping ... (val id t_1)) e t_2)
+   --------------------------------------------------- ; (Type of anon func)
+   (types (mapping ...) (=> (id t_1) e) (-> t_1 t_2))]
   
   [(where t (Γ-lookup-val Γ id))
    ----------------------------------------- ; (Extract val's type from Γ)
@@ -328,10 +323,14 @@
   [------------------------------- ; (type of object construction)
    (types Γ oc (calc-oc-type oc))]
   
-  ; we consider the intft returned by (calc-type e) as a Γ
-  [(where t (Γ-lookup-val (calc-type e) id))
+  ; we consider the intft returned by (calc-e-type e) as a Γ
+  [(where t (Γ-lookup-val (calc-e-type e) id))
    ------------------------------------------  ; (e.id)
    (types Γ (sel e id) t)]
+  
+  [(types Γ e t)
+   --------------------------- ; (new cell)
+   (types Γ (cell e) (var t))]
   
   [(types Γ e (var t))
    ---------------------------------- ; (cell.get)
@@ -553,7 +552,17 @@
 
 ;;; Reduction Relation ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; TODO make sure that anonymous functions passed anywhere obey lexical scoping
+; TODO merge all grammars into one language because
+; Note that define-extended-language is a nice idea, but would cause much
+; code duplication. For instance, (cl myFunc (+ arg 1) ()) is a runtime 
+; expression, but not a compile time expression, so it is not allowed in
+; L-simple-v1, but only added in L-simple-v1-Ev. But then, e has to be redefined
+; in L-simple-v1-Ev, because e now also can be a closure. Finally, 
+; L-simple-v1-Ev is has to be a duplicate of L-simple-v1, with some details 
+; changed. 
+; Conclusion: Don't use define-extended-language and put everything into one
+; language. Disadvantage: Source code can contain constructs which should not
+; be written at compile time, but only be created at run time.
 
 (define-extended-language L-simple-v1-Ev L-simple-v1+Γ
   (se                         ; simplified (evaluated) expression ("value")
@@ -573,7 +582,10 @@
   (cv                         ; cell value
     (natural se))             ;   maps a natural-id to the current value of cell
 
-  (state                      ; state of program execution
+  (pstate                      ; state of program execution
+    (e (vv ...) (cv ...)))    ;   expr to evaluate, val values, cell values
+
+  (state                      ; state of program execution, with one hole
     (E (vv ...) (cv ...)))    ;   expr to evaluate, val values, cell values
   
   (S                          ; statement with a hole to evaluate
@@ -584,7 +596,6 @@
     (println E)               ;   print line
     (if E stat)               ;   if-then with no return value
     (if E stat stat)          ;   if-then-else with no return value
-    (while E stat)            ;   while loop
     stat-done)                ;   a "done" (executed) statement
   
   (E                          ; expression with a hole to evaluate
@@ -595,7 +606,8 @@
     ( (val id_s se_s) ...     ;   dito, but
       (val id E)              ;     val decl is untyped
       d ...)                  ;
-    {S ... e}                 ;   block expression
+    {S stat ... e}            ;   block expression
+    {E}                       ;
     (if E e e)                ;   if
     (sel E id)                ;   e.id
     (cell E)                  ;   new cell storing mutable value
@@ -614,21 +626,63 @@
     (* E e)                   ;   integer multiplication
     (* number E)              ;   
     (/ E e)                   ;   integer division
-    (/ number E)              ;   
+    (/ number E)              ;
     hole)                     ;   hole
 )
 
 (define red
   (reduction-relation
     L-simple-v1-Ev
-    #:domain state
+    #:domain pstate
+    
+    (--> (in-hole state {(type id t) stat ...})
+         (in-hole state {stat ...})
+         "{t}") ; ignore type declaration inside block statement
+    (--> (in-hole state {(type id t) stat ... e})
+         (in-hole state {stat ... e})
+         "{t-e}") ; ignore type declaration inside block expression
+         
+    (--> (in-hole (E (vv ...)         (cv ...)) {(val id t se) stat ...})
+         (in-hole (E (vv ... (id se)) (cv ...)) {stat ...})
+         "{tv}") ; typed value inside block statement
+    (--> (in-hole (E (vv ...)         (cv ...)) {(val id t se) stat ... e})
+         (in-hole (E (vv ... (id se)) (cv ...)) {stat ... e})
+         "{tv-e}") ; typed value inside block expression
+    (--> (in-hole (E (vv ...)         (cv ...)) {(val id se) stat ...})
+         (in-hole (E (vv ... (id se)) (cv ...)) {stat ...})
+         "{utv}") ; untyped value inside block statement
+    (--> (in-hole (E (vv ...)         (cv ...)) {(val id se) stat ... e})
+         (in-hole (E (vv ... (id se)) (cv ...)) {stat ... e})
+         "{utv-e}") ; untyped value inside block expression
+    
+    (--> (in-hole state (println literal))
+         ,(begin
+            (printf "~a\n" (term literal))
+            (term (in-hole state stat-done)))
+         "println")
+    
+    (--> (in-hole state (if true stat))
+         (in-hole state stat)
+         "if-t-s") ; if true statement
+    (--> (in-hole state (if false stat))
+         (in-hole state stat-done)
+         "if-f-s") ; if false statement
+    (--> (in-hole state (if true stat_1 stat_2))
+         (in-hole state stat_1)
+         "if-t-s1s2") ; if true
+    (--> (in-hole state (if false stat_1 stat_2))
+         (in-hole state stat_2)
+         "if-f-s1s2") ; if false
     
     (--> (in-hole (E (vv_env ... ) (cv ...)) 
                   ((cl id e (vv_cl ...)) se_arg))
-         (in-hole (E (vv_env ... vv_cl ... (id se_arg) (cv ...))) 
+         (in-hole (E (vv_cl ... (id se_arg)) (cv ...)) 
                   e)
-          ; TODO fresh names / capture /substitution...
          "apply")
+    
+    (--> (in-hole (E (vv_before ... (id se) vv_after ...) (cv ...)) id)
+         (in-hole (E (vv_before ... (id se) vv_after ...) (cv ...)) se)
+         "lookup") ; lookup value
     
     (--> (in-hole (E (vv ...) (cv ...)) (=> (id t) e))
          (in-hole (E (vv ...) (cv ...)) (cl id e (vv ...)))
@@ -656,12 +710,6 @@
                                                   d ...))
          "oc-tv") ; object construction typed value
     
-    (--> (in-hole state {(type id t) stat ...})
-         (in-hole state {stat ...})
-         "{t}") ; ignore type declaration inside block statement
-    (--> (in-hole state {(type id t) stat ... e})
-         (in-hole state {stat ... e})
-         "{t-e}") ; ignore type declaration inside block expression
     (--> (in-hole state {stat-done})
          (in-hole state stat-done)
          "{}")
@@ -674,6 +722,10 @@
     (--> (in-hole state {stat-done stat ... e})
          (in-hole state {stat ... e})
          "{sd-e}") ; stat-done in block expression
+    
+    (--> (in-hole state (ign void))
+         (in-hole state stat-done)
+         "ign") ; ignore void return value of statement
     
     (--> (in-hole state (if true e_1 e_2))
          (in-hole state e_1)
@@ -771,8 +823,6 @@
     (--> (in-hole state (/ number_1 number_2)) 
          (in-hole state ,(/ (term number_1) (term number_2)))
          "/n1n2")
-    
-   ; TODO
 ))
 
 ; returns lowest natural not used as id in list of cell values
