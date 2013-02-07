@@ -44,7 +44,7 @@
   (intft                      ; interface type
     [(val id t) ...])         ;   sequence of vals with id and type
   (funct                      ; function type
-    (-> t t))                 ;   t -> t
+    (→ t t))                  ;   t -> t
   (intst                      ; intersection type
     (& t t))                  ;   t & t
   (patht                      ; path type ("indirect type")
@@ -59,7 +59,7 @@
     oc                        ;   object construction
     id                        ;   identifier
     {stat ... e}              ;   block expression (!= block of statements)
-    (=> (id t) e)             ;   anonymous function
+    (↦ (id t) e)              ;   anonymous function
     (if e e e)                ;   if then else returning a value
     binop                     ;   binary operator expression
     (sel e id)                ;   e.id
@@ -275,7 +275,7 @@
   ; Instead, we have to make the function application rule more powerful,
   ; but that's sufficient.
   
-  [(types Γ e_fun (-> t_arg2 t_ret))
+  [(types Γ e_fun (→ t_arg2 t_ret))
    (types Γ e_arg t_arg1)
    (subtype Γ t_arg1 t_arg2)
    ------------------------------ ; (Function Application)
@@ -283,7 +283,7 @@
  
   [(types (mapping ... (val id t_1)) e t_2)
    --------------------------------------------------- ; (Type of anon func)
-   (types (mapping ...) (=> (id t_1) e) (-> t_1 t_2))]
+   (types (mapping ...) (↦ (id t_1) e) (→ t_1 t_2))]
   
   [(where t (Γ-lookup-val Γ id))
    ----------------------------------------- ; (Extract val's type from Γ)
@@ -338,11 +338,11 @@
   
   [(types Γ e (var t))
    ---------------------------------- ; (cell.get)
-   (types Γ (sel e get) (-> Void t))]
+   (types Γ (sel e get) (→ Void t))]
   
   [(types Γ e (var t))
    ---------------------------------- ; (cell.set)
-   (types Γ (sel e set) (-> t Void))]
+   (types Γ (sel e set) (→ t Void))]
     
   [(types Γ e_1 Int)
    (types Γ e_2 Int)
@@ -443,7 +443,7 @@
   [(sub t_arg2 t_arg1)
    (sub t_ret1 t_ret2)
    --------------------------------------------
-   (sub (-> t_arg1 t_ret1) (-> t_arg2 t_ret2))]
+   (sub (→ t_arg1 t_ret1) (→ t_arg2 t_ret2))]
   
   [(sub t_1 t_2)
    (sub t_2 t_1)
@@ -487,8 +487,8 @@
   [(eval-type Γ primt) primt ]       ; primitive types
   [(eval-type Γ ((val id t) ...))    ; interface types
    ((val id (eval-type Γ t)) ...)]
-  [(eval-type Γ (-> t_arg t_ret))    ; function types
-   (-> (eval-type Γ t_arg)
+  [(eval-type Γ (→ t_arg t_ret))    ; function types
+   (→ (eval-type Γ t_arg)
        (eval-type Γ t_ret))]
   [(eval-type Γ (& t_1 t_2))         ; intersection types
    (intersect-ts 
@@ -524,8 +524,8 @@
   [(intersect-ts t_1 t_2)
    t_2
    (judgment-holds (sub t_2 t_1))]
-  [(intersect-ts (-> t_arg1 t_ret1) (-> t_arg2 t_ret2))
-   (-> (union-ts t_arg1 t_arg2) (intersect-ts t_ret1 t_ret2))]  
+  [(intersect-ts (→ t_arg1 t_ret1) (→ t_arg2 t_ret2))
+   (→ (union-ts t_arg1 t_arg2) (intersect-ts t_ret1 t_ret2))]  
   [(intersect-ts intft_1 intft_2)
    (intersect-intfts intft_1 intft_2)]  
   ; It can happen that two types are incompatible for intersection,
@@ -688,7 +688,7 @@
          (in-hole (E (vv_before ... (id se) vv_after ...) (cv ...)) se)
          "lookup") ; lookup value
     
-    (--> (in-hole (E (vv ...) (cv ...)) (=> (id t) e))
+    (--> (in-hole (E (vv ...) (cv ...)) (↦ (id t) e))
          (in-hole (E (vv ...) (cv ...)) (cl id e (vv ...)))
          "new-cl") ; closure creation
     
@@ -968,7 +968,7 @@
    (wf-t Γ t)]
   [(wf-t Γ ((val id t) ...))             ; interface type
    (wf-t Γ t) ... ]
-  [(wf-t Γ (-> t_arg t_ret))             ; function type
+  [(wf-t Γ (→ t_arg t_ret))             ; function type
    (wf-t Γ t_arg)
    (wf-t Γ t_ret)]
   [(wf-t Γ (& t_1 t_2))                  ; intersection type currently only for
