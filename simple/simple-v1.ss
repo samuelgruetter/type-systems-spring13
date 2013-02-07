@@ -85,6 +85,7 @@
     true                      ;   boolean
     false                     ;   boolean
     null                      ;   bottom type
+    void                      ;   returned by functions used as statements
     string)                   ;   string (provided by racket)
   
   (id                         ; identifier
@@ -299,6 +300,9 @@
   
   [--------------------  ; (boolean literal)
    (types Γ false Bool)]
+  
+  [--------------------  ; (void literal)
+   (types Γ void Void)]
   
   [(types Γ e_1 Bool)
    (types Γ e_2 t)
