@@ -7,12 +7,15 @@
 
 (define-language L-simple-v1
   (stat                       ; statement
+    statnd                    ;   statement which is not a declaration
+    d)                        ;   type or value declaration
+  
+  (statnd                     ; statement which is not a declaration
     (ign e)                   ;   `(ign e)` instead of `e;` : ignore void
     { stat stat ... }         ;   block of statements
-    d                         ;   type or value declaration
     (println e)               ;   print line
     (if e stat)               ;   if-then with no return value
-    (if e stat stat))          ;   if-then-else with no return value
+    (if e stat stat))         ;   if-then-else with no return value
   
   (d                          ; declaration
     vd                        ;   value declaration
@@ -127,19 +130,15 @@
 )
 (define-metafunction L-simple-v1+Γ
   Γ-lookup-val : Γ id -> t-or-#f
-  [(Γ-lookup-val (mapping_s ... (val id_req t_req)) id_req) 
-    t_req]
-  [(Γ-lookup-val (mapping_s ... (val id_last t_last)) id_req)
-   (Γ-lookup-val (mapping_s ...) id_req)]
-  [(Γ-lookup-val () id_req) #f]
+  [(Γ-lookup-val (mapping_before ... (val id_req t_req) mapping_after ...) id_req) 
+   t_req]
+  [(Γ-lookup-val Γ id_req) #f]
 )
 (define-metafunction L-simple-v1+Γ
   Γ-lookup-type : Γ id -> t-or-#f
-  [(Γ-lookup-type (mapping_s ... (type id_req t_req)) id_req) 
-    t_req]
-  [(Γ-lookup-type (mapping_s ... (type id_last t_last)) id_req)
-   (Γ-lookup-type (mapping_s ...) id_req)]
-  [(Γ-lookup-type () id_req) #f]
+  [(Γ-lookup-type (mapping_before ... (type id_req t_req) mapping_after ...) id_req) 
+   t_req]
+  [(Γ-lookup-type Γ id_req) #f]
 )
 (define-metafunction L-simple-v1+Γ
   Γ-extend-unsafe : Γ mapping -> Γ
@@ -305,10 +304,10 @@
    (types Γ void Void)]
   
   [(types Γ e_1 Bool)
-   (types Γ e_2 t)
-   (types Γ e_3 t)
-   ------------------------------ ; (if-then-else expression)
-   (types Γ (if e_1 e_2 e_3) t)]
+   (types Γ e_2 t_2)
+   (types Γ e_3 t_3)
+   --------------------------------------------- ; (if-then-else expression)
+   (types Γ (if e_1 e_2 e_3) (union-ts t_2 t_3))]
   
   [(types Γ e t)
    ----------------- ; (expression block of one single expression)
@@ -320,9 +319,9 @@
    (types Γ { d stat_s ... e } t)]
   
   [(types Γ {stat_s ... e} t)
-   (side-condition (is-wf-stat Γ stat))
-   ----------------------------------- ; (expression block not starting with d)
-   (types Γ { stat stat_s ... e } t)]
+   (side-condition (is-wf-stat Γ statnd))
+   -------------------------------------- ; (expression block not starting with d)
+   (types Γ { statnd stat_s ... e } t)]
   
   [------------------------------- ; (type of object construction)
    (types Γ oc (calc-oc-type oc))]
