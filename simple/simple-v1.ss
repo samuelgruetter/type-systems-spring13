@@ -108,8 +108,6 @@
     (type id t))              ;   (myTypeAlias -> aType)
   (Γ                          ; typing environment
     (mapping ...))            ;   list of mappings
-  (t-or-#f                    ; a type or #f, meaning that no type was found
-    t #f)
   
   ; definitions needed for the reduction relation
   
@@ -196,123 +194,14 @@
 ; to misspelling that word.
 
 (define-metafunction L
-  Γ-lookup-mapping : Γ id -> mapping or #f
-  [(Γ-lookup-mapping (mapping_s ... (val id_req t_req)) id_req) 
-    (val id_req t_req)]
-  [(Γ-lookup-mapping (mapping_s ... (type id_req t_req)) id_req) 
-    (type id_req t_req)]
-  [(Γ-lookup-mapping (mapping_s ... mapping_not-matching) id_req)
-   (Γ-lookup-mapping (mapping_s ...) id_req)]
-  [(Γ-lookup-mapping () id_req) #f]
+  not-in : Γ id -> boolean
+  [(not-in (mapping_before ... (val  id t) mapping_after ...) id) #f]
+  [(not-in (mapping_before ... (type id t) mapping_after ...) id) #f]
+  [(not-in Γ id) #t]
 )
-(define-metafunction L
-  Γ-lookup-val : Γ id -> t-or-#f
-  [(Γ-lookup-val (mapping_before ... (val id_req t_req) mapping_after ...) id_req) 
-   t_req]
-  [(Γ-lookup-val Γ id_req) #f]
-)
-(define-metafunction L
-  Γ-lookup-type : Γ id -> t-or-#f
-  [(Γ-lookup-type (mapping_before ... (type id_req t_req) mapping_after ...) id_req) 
-   t_req]
-  [(Γ-lookup-type Γ id_req) #f]
-)
-(define-metafunction L
-  Γ-extend-unsafe : Γ mapping -> Γ
-  [(Γ-extend-unsafe (mapping_s ...) mapping_new)
-   (mapping_s ... mapping_new)]
-)
-(define-metafunction L
-  Γ-extend : Γ mapping -> Γ
-  [(Γ-extend Γ (val id_new t_new))
-   (Γ-extend-unsafe Γ (val id_new t_new))
-   (side-condition (not (term (Γ-lookup-mapping Γ id_new))))]
-  [(Γ-extend Γ (type id_new t_new))
-   (Γ-extend-unsafe Γ (type id_new t_new))
-   (side-condition (not (term (Γ-lookup-mapping Γ id_new))))]
-  [(Γ-extend Γ mapping)
-   (, (error 'Γ-extend "redefining mapping")) ; TODO better error message
-   ]
-)
-
-; Note that define-judgment-form expects the same name everywhere,
-; so a rule cannot combine different judgments. To work around this,
-; we have to define the judgments as metafunctions. 
 
 
 ;;; Typechecking ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-; (wf-stat Γ stat) means that in Γ, stat is a well-formed statement
-(define-judgment-form
-  L
-  #:mode (wf-stat I I)
-  #:contract (wf-stat Γ stat)
-  [(wf-stat Γ stat)
-   (side-condition (is-wf-stat Γ stat))]
-)
-(define-metafunction L
-  is-wf-stat : Γ stat -> boolean
-  [(is-wf-stat Γ d)                         ; view declaration as statement
-   (is-wf-d Γ d)]
-  [(is-wf-stat Γ (ign e)) #t                ; ign-statement
-   (judgment-holds (types Γ e Void))] 
-)
-
-; (wf-d Γ d) means that in Γ, d is a well-formed declaration
-; Does not check that id is not yet in Γ
-(define-judgment-form
-  L
-  #:mode (wf-d I I)
-  #:contract (wf-d Γ d)
-  [(wf-d Γ d)
-   (side-condition (is-wf-d Γ d))]
-)
-(define-metafunction L
-  is-wf-d : Γ d -> boolean
-  [(is-wf-d Γ (val id t e)) #t            ; typed val decl
-   (judgment-holds (subtype Γ (calc-e-type Γ e) t))]
-  [(is-wf-d Γ (val id e)) #t              ; untyped val decl
-   (where t_unused (calc-e-type Γ e))]
-  [(is-wf-d Γ (type id t))                ; type decl
-   (is-wf-t Γ t)]
-)
-
-; (calc-oc-type Γ oc) returns the interface type of object construction oc
-; also typechecks rhs of declarations
-(define-metafunction L
-  calc-oc-type : Γ oc -> intft
-  [(calc-oc-type Γ ()) []]
-  [(calc-oc-type Γ (d d_s ...))
-   ; Γs have the same form as intfts :)
-   (Γ-extend (calc-oc-type Γ_new (d_s ...)) mapping)
-   (judgment-holds (wf-d Γ d))
-   (where Γ_new (Γ-extend Γ mapping))
-   (where mapping (d-to-mapping Γ d))]
-)
-
-; converts a value or type declaration to a mapping which can be stored in a Γ
-; Γ_outer is the context needed to construct the type of untyped vds
-(define-metafunction L
-  d-to-mapping : Γ_outer d -> mapping
-  [(d-to-mapping Γ_outer (val id t e))    ; typed val decl
-   (val id t)]
-  [(d-to-mapping Γ_outer (val id e))      ; untyped val decl
-   (val id t)
-   (where t (calc-e-type Γ_outer e))]
-  [(d-to-mapping Γ_outer (type id t))     ; type decl
-   (type id t)]
-)
-
-; (calc-e-type Γ e) returns the type of expression e
-(define-metafunction L
-  calc-e-type : Γ e -> t
-  [(calc-e-type Γ e) t_1
-   (where (t_1) ,(judgment-holds (types Γ e t) t))]
-  ; sometimes it finds the same type in two different ways:
-  ; TODO why, and can it also be >2x?
-  [(calc-e-type Γ e) t_1
-   (where (t_1 t_1) ,(judgment-holds (types Γ e t) t))]
-)
 
 ; (types Γ e t) means that in Γ, e is of type t
 (define-judgment-form
@@ -327,8 +216,8 @@
   ; ------------------------------------ ; (subsumption)
   ; (types Γ e t_2)]
   ;
-  ; Instead, we have to make the function application rule more powerful,
-  ; but that's sufficient.
+  ; Instead, we have to subtyping in function application and in typed val
+  ; decls, but that's sufficient.
   
   [(types Γ e_fun (→ t_arg2 t_ret))
    (types Γ e_arg t_arg1)
@@ -340,9 +229,10 @@
    --------------------------------------------------- ; (Type of anon func)
    (types (mapping ...) (↦ (id t_1) e) (→ t_1 t_2))]
   
-  [(where t (Γ-lookup-val Γ id))
-   ----------------------------------------- ; (Extract val's type from Γ)
-   (types Γ id t)]
+  [(side-condition (not-in (mapping_before ...) id))
+   (side-condition (not-in (mapping_after  ...) id))
+   ----------------------------------------------- ; (Extract val's type from Γ)
+   (types (mapping_before ... (val id t) mapping_after ...) id t)]
   
   [--------------------  ; (integer literals)
    (types Γ number Int)]
@@ -366,25 +256,57 @@
    (types Γ (if e_1 e_2 e_3) (union-ts t_2 t_3))]
   
   [(types Γ e t)
-   ----------------- ; (expression block of one single expression)
+   ----------------- ; (expr block of one single expression)
    (types Γ {e} t)]
   
-  [(types (Γ-extend Γ (d-to-mapping Γ d)) {stat_s ... e} t)
-   (side-condition (is-wf-d Γ d))   
-   ---------------------------------------- ; (expression block starting with d)
-   (types Γ { d stat_s ... e } t)]
+  [(types (mapping_Γ ...) e t_sub)
+   (subtype (mapping_Γ ...) t_sub t)
+   (types (mapping_Γ ... (val id t)) {stat_s ... e_last} t_last)
+   (side-condition (not-in (mapping_Γ ...) id))
+   --------------------------------------- ; (expr block starting with typed vd)
+   (types (mapping_Γ ...) { (val id t e) stat_s ... e_last } t_last)]
+  
+  [(types (mapping_Γ ...) e t)
+   (types (mapping_Γ ... (val id t)) {stat_s ... e_last} t_last)
+   (side-condition (not-in (mapping_Γ ...) id))
+   ------------------------------------- ; (expr block starting with untyped vd)
+   (types (mapping_Γ ...) { (val id e) stat_s ... e_last } t_last)]
+  
+  [(types (mapping_Γ ... (type id t)) {stat_s ... e_last} t_last)
+   (side-condition (wf-t (mapping_Γ ...) t))
+   (side-condition (not-in (mapping_Γ ...) id))
+   ------------------------------------- ; (expr block starting with type decl)
+   (types (mapping_Γ ...) { (type id t) stat_s ... e_last } t_last)]
   
   [(types Γ {stat_s ... e} t)
-   (side-condition (is-wf-stat Γ statnd))
-   -------------------------------------- ; (expression block not starting with d)
-   (types Γ { statnd stat_s ... e } t)]
+   (types Γ e_void Void)
+   ------------------------------------------ ; (expr block starting with ign)
+   (types Γ { (ign e_void) stat_s ... e } t)]
   
-  [------------------------------- ; (type of object construction)
-   (types Γ oc (calc-oc-type oc))]
+  [---------------- ; (type of empty oc)
+   (types Γ () [])]
   
-  ; we consider the intft returned by (calc-e-type e) as a Γ
-  [(where t (Γ-lookup-val (calc-e-type e) id))
-   ------------------------------------------  ; (e.id)
+  [(types (mapping_Γ ...) e t_sub)
+   (subtype (mapping_Γ ...) t_sub t)
+   (types (mapping_Γ ... (val id t)) (d_s ...) (mapping_t ...))
+   (side-condition (not-in (mapping_Γ ...) id))
+   ------------------------------------------- ;(type of oc w/ typed val decl)
+   (types (mapping_Γ ...) ((val id t e) d_s ...) (mapping_t ... (val id t)))]
+  
+  [(types (mapping_Γ ...) e t)
+   (types (mapping_Γ ... (val id t)) (d_s ...) (mapping_t ...))
+   (side-condition (not-in (mapping_Γ ...) id))
+   ------------------------------------------- ;(type of oc w/ untyped val decl)
+   (types (mapping_Γ ...) ((val id e) d_s ...) (mapping_t ... (val id t)))]
+  
+  [(types (mapping_Γ ... (type id t)) (d_s ...) intft)
+   (side-condition (wf-t (mapping_Γ ...) t))
+   (side-condition (not-in (mapping_Γ ...) id))
+   ------------------------------------------- ;(type of oc w/ type decl)
+   (types (mapping_Γ ...) ((type id t) d_s ...) intft)]
+  
+  [(types Γ e [mapping_before ... (val id t) mapping_after ...])   
+   ------------------------------------------------------------- ; (e.id)
    (types Γ (sel e id) t)]
   
   [(types Γ e t)
@@ -461,12 +383,14 @@
 
 ; (sub t_1 t_2) means that t_1 <: t_2
 ; t_1 and t_2 must be evaluated before
-(define-judgment-form
-  L
+(define-judgment-form L
   #:mode (sub I I)
+  
   ; Also accepts #f as arg, because that's what unsuccessful lookup returns,
   ; but if one or both args are #f, the judgment never holds.
-  #:contract (sub t-or-#f t-or-#f)
+  ; #:contract (sub t-or-#f t-or-#f)
+  
+  #:contract (sub t t)
   
   [----------------
    (sub Void Void)]
@@ -480,10 +404,13 @@
   [---------------
    (sub intft [])]
   
-  [(sub (Γ-lookup-val intft_1 id_2) t_2) ; val is covariant 
-   (sub intft_1 [(val id_2rest t_2rest) ...])
-   ----------------------------------------------------------
-   (sub intft_1 [(val id_2 t_2) (val id_2rest t_2rest) ...])]
+  ; (sub intft_b intft_a) is defined by recursion on length of intft_a.
+  [(sub t_b t_a) ; covariance
+   (sub [(val id_b1 t_b1) ... (val id t_b) (val id_b2 t_b2) ...]
+        [(val id_a1 t_a1) ...])
+   -------------------------------------------------------------
+   (sub [(val id_b1 t_b1) ... (val id t_b) (val id_b2 t_b2) ...]
+        [(val id t_a) (val id_a1 t_a1) ...])]
   
   [(sub t_arg2 t_arg1)
    (sub t_ret1 t_ret2)
@@ -499,8 +426,7 @@
 
 ; (subtype Γ t_1 t_2) means that in Γ, t_1 <: t_2
 ; t_1 and t_2 are evaluated in Γ
-(define-judgment-form
-  L
+(define-judgment-form L
   #:mode (subtype I I I)
   #:contract (subtype Γ t t)
   [(subtype Γ t_1 t_2)
@@ -517,10 +443,11 @@
   [(types-equal t_1 t_2) #f]
 )
 
-; (is-wf-t Γ t) rejects e.g. bad type intersections
-(define-metafunction L
-  is-wf-t : Γ t -> boolean
-  [(is-wf-t Γ t) #t
+; (wf-t Γ t) rejects e.g. bad type intersections
+(define-judgment-form L
+  #:mode (wf-t I I)
+  #:contract (wf-t Γ t)
+  [(wf-t Γ t)
    (where t_2 (eval-type Γ t))]
 )
 
@@ -539,8 +466,9 @@
    (intersect-ts 
      (eval-type Γ t_1) 
      (eval-type Γ t_2))]
-  [(eval-type Γ id)                  ; id referring to type decl
-   (Γ-lookup-type Γ id)]
+  [(eval-type                        ; id referring to type decl
+     (mapping_before ... (type id t) mapping_after ...) id)
+   t]
   [(eval-type Γ (var t))             ; reference cells
    (var (eval-type Γ t))]
 )
@@ -767,3 +695,143 @@
   [(new-cid ((natural_before se_before) ... (natural_last se_last)))
    ,(+ (term natural_last) 1)]
 )
+
+; UNUSED ;
+
+#|
+; (calc-oc-type Γ oc) returns the interface type of object construction oc
+; also typechecks rhs of declarations
+(define-metafunction L
+  calc-oc-type : Γ oc -> intft
+  [(calc-oc-type Γ ()) []]
+  [(calc-oc-type Γ (d d_s ...))
+   ; Γs have the same form as intfts :)
+   (Γ-extend (calc-oc-type Γ_new (d_s ...)) mapping)
+   (judgment-holds (wf-d Γ d))
+   (where Γ_new (Γ-extend Γ mapping))
+   (where mapping (d-to-mapping Γ d))]
+)
+|#
+
+#|
+(define-metafunction L
+  Γ-extend : Γ mapping -> Γ
+  [(Γ-extend Γ (val id_new t_new))
+   (Γ-extend-unsafe Γ (val id_new t_new))
+   (side-condition (not (term (Γ-lookup-mapping Γ id_new))))]
+  [(Γ-extend Γ (type id_new t_new))
+   (Γ-extend-unsafe Γ (type id_new t_new))
+   (side-condition (not (term (Γ-lookup-mapping Γ id_new))))]
+  [(Γ-extend Γ mapping)
+   (, (error 'Γ-extend "redefining mapping")) ; TODO better error message
+   ]
+)|#
+
+#|
+(define-metafunction L
+  Γ-lookup-mapping : Γ id -> mapping or #f
+  [(Γ-lookup-mapping (mapping_s ... (val id_req t_req)) id_req) 
+    (val id_req t_req)]
+  [(Γ-lookup-mapping (mapping_s ... (type id_req t_req)) id_req) 
+    (type id_req t_req)]
+  [(Γ-lookup-mapping (mapping_s ... mapping_not-matching) id_req)
+   (Γ-lookup-mapping (mapping_s ...) id_req)]
+  [(Γ-lookup-mapping () id_req) #f]
+)
+(define-metafunction L
+  Γ-lookup-val : Γ id -> t-or-#f
+  [(Γ-lookup-val (mapping_before ... (val id_req t_req) mapping_after ...) id_req) 
+   t_req]
+  [(Γ-lookup-val Γ id_req) #f]
+)
+(define-metafunction L
+  Γ-lookup-type : Γ id -> t-or-#f
+  [(Γ-lookup-type (mapping_before ... (type id_req t_req) mapping_after ...) id_req) 
+   t_req]
+  [(Γ-lookup-type Γ id_req) #f]
+)
+(define-metafunction L
+  Γ-extend-unsafe : Γ mapping -> Γ
+  [(Γ-extend-unsafe (mapping_s ...) mapping_new)
+   (mapping_s ... mapping_new)]
+)
+
+(define-judgment-form L
+  #:mode (not-in I I)
+  #:contract (not-in Γ id)
+  [(not-in Γ id)
+   (side-condition (not (term (Γ-lookup-mapping Γ id))))]
+)|#
+
+#|
+
+; (wf-stat Γ stat) means that in Γ, stat is a well-formed statement
+(define-judgment-form
+  L
+  #:mode (wf-stat I I)
+  #:contract (wf-stat Γ stat)
+  [(wf-stat Γ stat)
+   (side-condition (is-wf-stat Γ stat))]
+)
+(define-metafunction L
+  is-wf-stat : Γ stat -> boolean
+  [(is-wf-stat Γ d)                         ; view declaration as statement
+   (is-wf-d Γ d)]
+  [(is-wf-stat Γ (ign e)) #t                ; ign-statement
+   (judgment-holds (types Γ e Void))] 
+)
+
+; (wf-d Γ d) means that in Γ, d is a well-formed declaration
+; Does not check that id is not yet in Γ
+(define-judgment-form
+  L
+  #:mode (wf-d I I)
+  #:contract (wf-d Γ d)
+  [(wf-d Γ d)
+   (side-condition (is-wf-d Γ d))]
+)
+(define-metafunction L
+  is-wf-d : Γ d -> boolean
+  [(is-wf-d Γ (val id t e)) #t            ; typed val decl
+   (judgment-holds (subtype Γ (calc-e-type Γ e) t))]
+  [(is-wf-d Γ (val id e)) #t              ; untyped val decl
+   (where t_unused (calc-e-type Γ e))]
+  [(is-wf-d Γ (type id t)) #t             ; type decl
+   (judgment-holds (wf-t Γ t))]
+)
+|#
+
+#|
+
+; converts a value declaration to a mapping which can be stored in a Γ
+; Γ_outer is the context needed to construct the type of untyped vds
+(define-metafunction L
+  vd-to-mapping : Γ_outer vd -> mapping
+  [(vd-to-mapping Γ_outer (val id t e))    ; typed val decl
+   (val id t)]
+  [(vd-to-mapping Γ_outer (val id e))      ; untyped val decl
+   (val id t)
+   (where t (calc-e-type Γ_outer e))]
+)
+
+; converts a value or type declaration to a mapping which can be stored in a Γ
+; Γ_outer is the context needed to construct the type of untyped vds
+(define-metafunction L
+  d-to-mapping : Γ_outer d -> mapping
+  [(d-to-mapping Γ_outer vd)              ; val decl
+   (vd-to-mapping Γ_outer vd)]
+  [(d-to-mapping Γ_outer (type id t))     ; type decl
+   (type id t)]
+)
+
+; (calc-e-type Γ e) returns the type of expression e
+(define-metafunction L
+  calc-e-type : Γ e -> t
+  [(calc-e-type Γ e) t_1
+   (where (t_1) ,(judgment-holds (types Γ e t) t))]
+  ; sometimes it finds the same type in two different ways:
+  ; TODO why, and can it also be >2x?
+  [(calc-e-type Γ e) t_1
+   (where (t_1 t_1) ,(judgment-holds (types Γ e t) t))]
+)
+|#
