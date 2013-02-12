@@ -72,7 +72,8 @@
     (cell e)                  ;   a cell storing mutable data. (cell e) is of 
                               ;     type (var t) if e is of type t
     literal                   ;   literal
-    rtse)                     ;   runtime simplified expression
+    rtse                      ;   runtime simplified expression
+    peoc)                     ;   partially evaluated object construction (runtime)
   
   (oc                         ; object construction
     (d ...))                  ;   (possibly empty) list of declarations
@@ -111,6 +112,9 @@
   
   ; definitions needed for the reduction relation
   
+  (peoc                       ; partially evaluated object construction
+    ((id se) ... d ...))      ;   
+  
   (rtse                       ; se which only exists at runtime
     (cid natural)             ;   reference to a cell, cid = cell id
     (getter natural)          ;   get function of a cell
@@ -124,7 +128,7 @@
     soc                       ;   simplified object construction
     rtse)                     ;   runtime simplified expression
   (soc                        ; simplified object construction
-    ((val id se) ...))        ;   types are erased
+    ((id se) ...))            ;   types are erased, val keyword is removed
 
   (vv                         ; val value
     (id se))                  ;   maps an id to its value
@@ -147,10 +151,10 @@
     (E e)                     ;   1) simplify function 
     ((cl id e (vv ...)) E)    ;   2) simplify arg 
                               ;   3) apply (cf reduction rule "apply")
-    ( (val id_s se_s) ...     ;   object construction with evaluated part,
+    ( (id_s se_s) ...         ;   object construction with evaluated part,
       (val id t E)            ;     part to evaluate,
       d ...)                  ;     and not yet evaluated part
-    ( (val id_s se_s) ...     ;   dito, but
+    ( (id_s se_s) ...         ;   dito, but
       (val id E)              ;     val decl is untyped
       d ...)                  ;
     {S stat ... e}            ;   block expression
@@ -194,12 +198,17 @@
 ; to misspelling that word.
 
 (define-metafunction L
-  not-in : Γ id -> boolean
-  [(not-in (mapping_before ... (val  id t) mapping_after ...) id) #f]
-  [(not-in (mapping_before ... (type id t) mapping_after ...) id) #f]
-  [(not-in Γ id) #t]
+  not-in-Γ : Γ id -> boolean
+  [(not-in-Γ (mapping_before ... (val  id t) mapping_after ...) id) #f]
+  [(not-in-Γ (mapping_before ... (type id t) mapping_after ...) id) #f]
+  [(not-in-Γ Γ id) #t]
 )
 
+(define-metafunction L
+  not-in-vvs : (vv ...) id -> boolean
+  [(not-in-vvs (vv_before ... (id se) mapping_vv ...) id) #f]
+  [(not-in-vvs (vv ...) id) #t]
+)
 
 ;;; Typechecking ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -229,8 +238,8 @@
    --------------------------------------------------- ; (Type of anon func)
    (types (mapping ...) (↦ (id t_1) e) (→ t_1 t_2))]
   
-  [(side-condition (not-in (mapping_before ...) id))
-   (side-condition (not-in (mapping_after  ...) id))
+  [(side-condition (not-in-Γ (mapping_before ...) id))
+   (side-condition (not-in-Γ (mapping_after  ...) id))
    ----------------------------------------------- ; (Extract val's type from Γ)
    (types (mapping_before ... (val id t) mapping_after ...) id t)]
   
@@ -262,19 +271,19 @@
   [(types (mapping_Γ ...) e t_sub)
    (subtype (mapping_Γ ...) t_sub t)
    (types (mapping_Γ ... (val id t)) {stat_s ... e_last} t_last)
-   (side-condition (not-in (mapping_Γ ...) id))
+   (side-condition (not-in-Γ (mapping_Γ ...) id))
    --------------------------------------- ; (expr block starting with typed vd)
    (types (mapping_Γ ...) { (val id t e) stat_s ... e_last } t_last)]
   
   [(types (mapping_Γ ...) e t)
    (types (mapping_Γ ... (val id t)) {stat_s ... e_last} t_last)
-   (side-condition (not-in (mapping_Γ ...) id))
+   (side-condition (not-in-Γ (mapping_Γ ...) id))
    ------------------------------------- ; (expr block starting with untyped vd)
    (types (mapping_Γ ...) { (val id e) stat_s ... e_last } t_last)]
   
   [(types (mapping_Γ ... (type id t)) {stat_s ... e_last} t_last)
    (side-condition (wf-t (mapping_Γ ...) t))
-   (side-condition (not-in (mapping_Γ ...) id))
+   (side-condition (not-in-Γ (mapping_Γ ...) id))
    ------------------------------------- ; (expr block starting with type decl)
    (types (mapping_Γ ...) { (type id t) stat_s ... e_last } t_last)]
   
@@ -289,19 +298,19 @@
   [(types (mapping_Γ ...) e t_sub)
    (subtype (mapping_Γ ...) t_sub t)
    (types (mapping_Γ ... (val id t)) (d_s ...) (mapping_t ...))
-   (side-condition (not-in (mapping_Γ ...) id))
+   (side-condition (not-in-Γ (mapping_Γ ...) id))
    ------------------------------------------- ;(type of oc w/ typed val decl)
    (types (mapping_Γ ...) ((val id t e) d_s ...) (mapping_t ... (val id t)))]
   
   [(types (mapping_Γ ...) e t)
    (types (mapping_Γ ... (val id t)) (d_s ...) (mapping_t ...))
-   (side-condition (not-in (mapping_Γ ...) id))
+   (side-condition (not-in-Γ (mapping_Γ ...) id))
    ------------------------------------------- ;(type of oc w/ untyped val decl)
    (types (mapping_Γ ...) ((val id e) d_s ...) (mapping_t ... (val id t)))]
   
   [(types (mapping_Γ ... (type id t)) (d_s ...) intft)
    (side-condition (wf-t (mapping_Γ ...) t))
-   (side-condition (not-in (mapping_Γ ...) id))
+   (side-condition (not-in-Γ (mapping_Γ ...) id))
    ------------------------------------------- ;(type of oc w/ type decl)
    (types (mapping_Γ ...) ((type id t) d_s ...) intft)]
   
@@ -540,9 +549,11 @@
          
     (--> (in-hole (E (vv ...)         (cv ...)) {(val id t se) stat ... e})
          (in-hole (E (vv ... (id se)) (cv ...)) {stat ... e})
+         (side-condition (term (not-in-vvs (vv ...) id)))
          "{tv-e}") ; typed value inside block expression
     (--> (in-hole (E (vv ...)         (cv ...)) {(val id se) stat ... e})
          (in-hole (E (vv ... (id se)) (cv ...)) {stat ... e})
+         (side-condition (term (not-in-vvs (vv ...) id)))
          "{utv-e}") ; untyped value inside block expression
     
     (--> (in-hole (E (vv_env ... ) (cv ...)) 
@@ -559,26 +570,29 @@
          (in-hole (E (vv ...) (cv ...)) (cl id e (vv ...)))
          "new-cl") ; closure creation
     
-    (--> (in-hole state ( (val id_s se_s) ...
+    (--> (in-hole state ( (id_s se_s) ...
                           (type id t)
                           d ...))
-         (in-hole state ( (val id_s se_s) ...
+         (in-hole state ( (id_s se_s) ...
                           d ...))
          "oc-t") ; object construction ignore type declaration
     
-    (--> (in-hole (E (vv ...) (cv ...)) ( (val id_s se_s) ...
+    (--> (in-hole (E (vv ...) (cv ...)) ( (id_s se_s) ...
                                           (val id se)
                                           d ...))
-         (in-hole (E (vv ... (id se)) (cv ...)) ( (val id_s se_s) ... 
-                                                  (val id se)
+         (in-hole (E (vv ... (id se)) (cv ...)) ( (id_s se_s) ... 
+                                                  (id se)
                                                   d ...))
+         (side-condition (term (not-in-vvs (vv ...) id)))
          "oc-utv") ; object construction untyped value
-    (--> (in-hole (E (vv ...) (cv ...)) ( (val id_s se_s) ...
+    
+    (--> (in-hole (E (vv ...) (cv ...)) ( (id_s se_s) ...
                                           (val id t se)
                                           d ...))
-         (in-hole (E (vv ... (id se)) (cv ...)) ( (val id_s se_s) ... 
-                                                  (val id se)
+         (in-hole (E (vv ... (id se)) (cv ...)) ( (id_s se_s) ... 
+                                                  (id se)
                                                   d ...))
+         (side-condition (term (not-in-vvs (vv ...) id)))
          "oc-tv") ; object construction typed value
     
     (--> (in-hole state {stat-done})
@@ -757,9 +771,9 @@
 )
 
 (define-judgment-form L
-  #:mode (not-in I I)
-  #:contract (not-in Γ id)
-  [(not-in Γ id)
+  #:mode (not-in-Γ I I)
+  #:contract (not-in-Γ Γ id)
+  [(not-in-Γ Γ id)
    (side-condition (not (term (Γ-lookup-mapping Γ id))))]
 )|#
 
