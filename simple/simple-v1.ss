@@ -5,7 +5,7 @@
 
 ;;; The Grammar ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define-language L-simple-v1
+(define-language L
   (stat                       ; statement
     statnd                    ;   statement which is not a declaration
     d)                        ;   type or value declaration
@@ -68,7 +68,8 @@
     (sel e id)                ;   e.id
     (cell e)                  ;   a cell storing mutable data. (cell e) is of 
                               ;     type (var t) if e is of type t
-    literal)                  ;   literal
+    literal                   ;   literal
+    rtse)                     ;   runtime simplified expression
   
   (oc                         ; object construction
     (d ...))                  ;   (possibly empty) list of declarations
@@ -93,32 +94,113 @@
   
   (id                         ; identifier
     variable-not-otherwise-mentioned)
+  
+  ; typing environment Γ
+  ; Usually, Γ is only used to store mappings of the form (valName -> itsType).
+  ; But here, we also use it to store mappings of the form (typeAlias -> aType).
+  ; We store it in the same environment, because in a given context, we do not
+  ; allow a value and a type to have the same name.
+  ; To distinguish whether the mapping is (myValName -> itsType) or 
+  ; (myTypeAlias -> aType), we prefix them with `val` or `type`.
+  (mapping                    ; Γ item
+    (val id t)                ;   (myValName -> itsType)
+    (type id t))              ;   (myTypeAlias -> aType)
+  (Γ                          ; typing environment
+    (mapping ...))            ;   list of mappings
+  (t-or-#f                    ; a type or #f, meaning that no type was found
+    t #f)
+  
+  ; definitions needed for the reduction relation
+  
+  (rtse                       ; se which only exists at runtime
+    (cid natural)             ;   reference to a cell, cid = cell id
+    (getter natural)          ;   get function of a cell
+    (setter natural)          ;   set function of a cell
+    (cl id e (vv ...)))       ;   anonymous function (closure) with environment
+  
+  (se                         ; simplified (evaluated) expression ("value")
+    sre                       ;   simplified reference (= "not primitive") expr
+    literal)                  ;   simplified expression of primitive type
+  (sre                        ; simplified reference expression
+    soc                       ;   simplified object construction
+    rtse)                     ;   runtime simplified expression
+  (soc                        ; simplified object construction
+    ((val id se) ...))        ;   types are erased
+
+  (vv                         ; val value
+    (id se))                  ;   maps an id to its value
+  (cv                         ; cell value
+    (natural se))             ;   maps a natural-id to the current value of cell
+
+  (pstate                      ; state of program execution
+    (e (vv ...) (cv ...)))    ;   expr to evaluate, val values, cell values
+
+  (state                      ; state of program execution, with one hole
+    (E (vv ...) (cv ...)))    ;   expr to evaluate, val values, cell values
+  
+  (S                          ; statement with a hole to evaluate
+    (ign E)                   ;   `(ign e)` instead of `e;` : ignore void
+    { S stat ... }            ;   evaluate one after the other statement
+    (val id t E)              ;   typed value declaration
+    (val id E)                ;   untyped value declaration
+    (println E)               ;   print line
+    (if E stat)               ;   if-then with no return value
+    (if E stat stat)          ;   if-then-else with no return value
+    stat-done)                ;   a "done" (executed) statement
+  
+  (E                          ; expression with a hole to evaluate
+    ((cl id e (vv ...)) E)    ;   1) simplify function 2) simpl. arg 3) apply
+    ( (val id_s se_s) ...     ;   object construction with evaluated part,
+      (val id t E)            ;     part to evaluate,
+      d ...)                  ;     and not yet evaluated part
+    ( (val id_s se_s) ...     ;   dito, but
+      (val id E)              ;     val decl is untyped
+      d ...)                  ;
+    {S stat ... e}            ;   block expression
+    {E}                       ;
+    (if E e e)                ;   if
+    (sel E id)                ;   e.id
+    (cell E)                  ;   new cell storing mutable value
+    (&& E e)                  ;   logical and
+    (&& #t E)                 ;     lazy evaluation (only if first is true)
+    (|| E e)                  ;   logical or
+    (|| #f E)                 ;     lazy
+    (== E e)                  ;   equality
+    (== se E)                 ;   
+    (< E e)                   ;   less than for integers
+    (< number E)              ;   
+    (+ E e)                   ;   integer addition or string concatenation
+    (+ se E)                  ;   
+    (- E e)                   ;   integer subtraction
+    (- number E)              ;   
+    (* E e)                   ;   integer multiplication
+    (* number E)              ;   
+    (/ E e)                   ;   integer division
+    (/ number E)              ;
+    hole)                     ;   hole
 )
 
 
 ;;; Technical ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; Note: In English, both "judgment" and "judgement" are correct, but in redex,
+; Note on define-extended-language:
+; The define-extended-language directive is a nice idea, but would cause much
+; code duplication. For instance, (cl myFunc (+ arg 1) ()) is a runtime 
+; expression, but not a compile time expression, so it is not allowed in
+; L, but only added in L-Ev. But then, e has to be redefined in L-Ev as e-Ev, 
+; because e now also can be a closure. But now every non-terminal using an e
+; also needs to be redefined, replacing e by e-Ev. Finally, L-Ev is has to be a
+; duplicate of L, with some details changed. 
+; Conclusion: Don't use define-extended-language and put everything into one
+; language. Disadvantage: Source code can contain constructs which should not
+; be written at compile time, but only be created at run time.
+
+; Note on spelling:
+; In English, both "judgment" and "judgement" are correct, but in redex,
 ; only "judgment" is correct. Avoid being confused by weird error messages due
 ; to misspelling that word.
 
-; typing environment Γ
-; Usually, Γ is only used to store mappings of the form (myValName -> itsType).
-; But here, we also use it to store mappings of the form (myTypeAlias -> aType).
-; We store it in the same environment, because in a given context, we do not
-; allow a value and a type to have the same name.
-; To distinguish whether the mapping is (myValName -> itsType) or 
-; (myTypeAlias -> aType), we prefix them with `val` or `type`.
-(define-extended-language L-simple-v1+Γ L-simple-v1
-  [mapping                   ; Γ item
-    (val id t)               ;   (myValName -> itsType)
-    (type id t)]             ;   (myTypeAlias -> aType)
-  [Γ                         ; typing environment
-    (mapping ...)]           ;   list of mappings
-  [t-or-#f                   ; a type or #f, meaning that no type was found
-    t #f]
-)
-(define-metafunction L-simple-v1+Γ
+(define-metafunction L
   Γ-lookup-mapping : Γ id -> mapping or #f
   [(Γ-lookup-mapping (mapping_s ... (val id_req t_req)) id_req) 
     (val id_req t_req)]
@@ -128,24 +210,24 @@
    (Γ-lookup-mapping (mapping_s ...) id_req)]
   [(Γ-lookup-mapping () id_req) #f]
 )
-(define-metafunction L-simple-v1+Γ
+(define-metafunction L
   Γ-lookup-val : Γ id -> t-or-#f
   [(Γ-lookup-val (mapping_before ... (val id_req t_req) mapping_after ...) id_req) 
    t_req]
   [(Γ-lookup-val Γ id_req) #f]
 )
-(define-metafunction L-simple-v1+Γ
+(define-metafunction L
   Γ-lookup-type : Γ id -> t-or-#f
   [(Γ-lookup-type (mapping_before ... (type id_req t_req) mapping_after ...) id_req) 
    t_req]
   [(Γ-lookup-type Γ id_req) #f]
 )
-(define-metafunction L-simple-v1+Γ
+(define-metafunction L
   Γ-extend-unsafe : Γ mapping -> Γ
   [(Γ-extend-unsafe (mapping_s ...) mapping_new)
    (mapping_s ... mapping_new)]
 )
-(define-metafunction L-simple-v1+Γ
+(define-metafunction L
   Γ-extend : Γ mapping -> Γ
   [(Γ-extend Γ (val id_new t_new))
    (Γ-extend-unsafe Γ (val id_new t_new))
@@ -167,13 +249,13 @@
 
 ; (wf-stat Γ stat) means that in Γ, stat is a well-formed statement
 (define-judgment-form
-  L-simple-v1+Γ
+  L
   #:mode (wf-stat I I)
   #:contract (wf-stat Γ stat)
   [(wf-stat Γ stat)
    (side-condition (is-wf-stat Γ stat))]
 )
-(define-metafunction L-simple-v1+Γ
+(define-metafunction L
   is-wf-stat : Γ stat -> boolean
   [(is-wf-stat Γ d)                         ; view declaration as statement
    (is-wf-d Γ d)]
@@ -205,13 +287,13 @@
 ; (wf-d Γ d) means that in Γ, d is a well-formed declaration
 ; Does not check that id is not yet in Γ
 (define-judgment-form
-  L-simple-v1+Γ
+  L
   #:mode (wf-d I I)
   #:contract (wf-d Γ d)
   [(wf-d Γ d)
    (side-condition (is-wf-d Γ d))]
 )
-(define-metafunction L-simple-v1+Γ
+(define-metafunction L
   is-wf-d : Γ d -> boolean
   [(is-wf-d Γ (val id t e)) #t            ; typed val decl
    (judgment-holds (subtype Γ (calc-e-type Γ e) t))]
@@ -223,7 +305,7 @@
 
 ; (calc-oc-type Γ oc) returns the interface type of object construction oc
 ; also typechecks rhs of declarations
-(define-metafunction L-simple-v1+Γ
+(define-metafunction L
   calc-oc-type : Γ oc -> intft
   [(calc-oc-type Γ ()) []]
   [(calc-oc-type Γ (d d_s ...))
@@ -236,7 +318,7 @@
 
 ; converts a value or type declaration to a mapping which can be stored in a Γ
 ; Γ_outer is the context needed to construct the type of untyped vds
-(define-metafunction L-simple-v1+Γ
+(define-metafunction L
   d-to-mapping : Γ_outer d -> mapping
   [(d-to-mapping Γ_outer (val id t e))    ; typed val decl
    (val id t)]
@@ -248,7 +330,7 @@
 )
 
 ; (calc-e-type Γ e) returns the type of expression e
-(define-metafunction L-simple-v1+Γ
+(define-metafunction L
   calc-e-type : Γ e -> t
   [(calc-e-type Γ e) t_1
    (where (t_1) ,(judgment-holds (types Γ e t) t))]
@@ -260,7 +342,7 @@
 
 ; (types Γ e t) means that in Γ, e is of type t
 (define-judgment-form
-  L-simple-v1+Γ
+  L
   #:mode (types I I O)
   #:contract (types Γ e t)
  
@@ -416,7 +498,7 @@
 ; (sub t_1 t_2) means that t_1 <: t_2
 ; t_1 and t_2 must be evaluated before
 (define-judgment-form
-  L-simple-v1+Γ
+  L
   #:mode (sub I I)
   ; Also accepts #f as arg, because that's what unsuccessful lookup returns,
   ; but if one or both args are #f, the judgment never holds.
@@ -454,7 +536,7 @@
 ; (subtype Γ t_1 t_2) means that in Γ, t_1 <: t_2
 ; t_1 and t_2 are evaluated in Γ
 (define-judgment-form
-  L-simple-v1+Γ
+  L
   #:mode (subtype I I I)
   #:contract (subtype Γ t t)
   [(subtype Γ t_1 t_2)
@@ -463,7 +545,7 @@
 
 ; two types are equal iff each is a subtype of the other
 ; types must be simplified before
-(define-metafunction L-simple-v1+Γ
+(define-metafunction L
   types-equal : t t -> boolean
   [(types-equal t_1 t_2) #t
    (judgment-holds (sub t_1 t_2))
@@ -472,14 +554,14 @@
 )
 
 ; (is-wf-t Γ t) rejects e.g. bad type intersections
-(define-metafunction L-simple-v1+Γ
+(define-metafunction L
   is-wf-t : Γ t -> boolean
   [(is-wf-t Γ t) #t
    (where t_2 (eval-type Γ t))]
 )
 
 ; (eval-type Γ t) evaluates a type expression t in environment Γ
-(define-metafunction L-simple-v1+Γ
+(define-metafunction L
   eval-type : Γ t -> t
   [(eval-type Γ Void) Void ]         ; Void
   [(eval-type Γ Null) Null ]         ; Null
@@ -503,7 +585,7 @@
 ; possible to calculate the union of two types.
 ; Types given as argument must be simplified (evaluated) before.
 ; Type returned is also simplified.
-(define-metafunction L-simple-v1+Γ
+(define-metafunction L
   union-ts : t t -> t
   [(union-ts t_1 t_2)
    t_1
@@ -515,7 +597,7 @@
 
 ; types given as argument must be simplified (evaluated) before
 ; type returned is also simplified
-(define-metafunction L-simple-v1
+(define-metafunction L
   intersect-ts : t t -> t
   [(intersect-ts t_1 t_2)
    t_1
@@ -532,7 +614,7 @@
 )
 
 ; intersects two interface types which do not need to be sorted
-(define-metafunction L-simple-v1
+(define-metafunction L
   intersect-intfts : intft intft -> intft
   [(intersect-intfts 
      ((val id_same t_1) (val id_1r t_1r) ...)
@@ -555,87 +637,9 @@
 
 ;;; Reduction Relation ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; TODO merge all grammars into one language because
-; Note that define-extended-language is a nice idea, but would cause much
-; code duplication. For instance, (cl myFunc (+ arg 1) ()) is a runtime 
-; expression, but not a compile time expression, so it is not allowed in
-; L-simple-v1, but only added in L-simple-v1-Ev. But then, e has to be redefined
-; in L-simple-v1-Ev, because e now also can be a closure. Finally, 
-; L-simple-v1-Ev is has to be a duplicate of L-simple-v1, with some details 
-; changed. 
-; Conclusion: Don't use define-extended-language and put everything into one
-; language. Disadvantage: Source code can contain constructs which should not
-; be written at compile time, but only be created at run time.
-
-(define-extended-language L-simple-v1-Ev L-simple-v1+Γ
-  (se                         ; simplified (evaluated) expression ("value")
-    sre                       ;   simplified reference (= "not primitive") expr
-    literal)                  ;   simplified expression of primitive type
-  (sre                        ; simplified reference expression
-    soc                       ;   simplified object construction
-    (cid natural)             ;   reference to a cell, cid = cell id
-    (getter natural)          ;   get function of a cell
-    (setter natural)          ;   set function of a cell
-    (cl id e (vv ...)))       ;   anonymous function (closure) with environment
-  (soc                        ; simplified object construction
-    ((val id se) ...))        ;   types are erased
-
-  (vv                         ; val value
-    (id se))                  ;   maps an id to its value
-  (cv                         ; cell value
-    (natural se))             ;   maps a natural-id to the current value of cell
-
-  (pstate                      ; state of program execution
-    (e (vv ...) (cv ...)))    ;   expr to evaluate, val values, cell values
-
-  (state                      ; state of program execution, with one hole
-    (E (vv ...) (cv ...)))    ;   expr to evaluate, val values, cell values
-  
-  (S                          ; statement with a hole to evaluate
-    (ign E)                   ;   `(ign e)` instead of `e;` : ignore void
-    { S stat ... }            ;   evaluate one after the other statement
-    (val id t E)              ;   typed value declaration
-    (val id E)                ;   untyped value declaration
-    (println E)               ;   print line
-    (if E stat)               ;   if-then with no return value
-    (if E stat stat)          ;   if-then-else with no return value
-    stat-done)                ;   a "done" (executed) statement
-  
-  (E                          ; expression with a hole to evaluate
-    ((cl id e (vv ...)) E)    ;   1) simplify function 2) simpl. arg 3) apply
-    ( (val id_s se_s) ...     ;   object construction with evaluated part,
-      (val id t E)            ;     part to evaluate,
-      d ...)                  ;     and not yet evaluated part
-    ( (val id_s se_s) ...     ;   dito, but
-      (val id E)              ;     val decl is untyped
-      d ...)                  ;
-    {S stat ... e}            ;   block expression
-    {E}                       ;
-    (if E e e)                ;   if
-    (sel E id)                ;   e.id
-    (cell E)                  ;   new cell storing mutable value
-    (&& E e)                  ;   logical and
-    (&& #t E)                 ;     lazy evaluation (only if first is true)
-    (|| E e)                  ;   logical or
-    (|| #f E)                 ;     lazy
-    (== E e)                  ;   equality
-    (== se E)                 ;   
-    (< E e)                   ;   less than for integers
-    (< number E)              ;   
-    (+ E e)                   ;   integer addition or string concatenation
-    (+ se E)                  ;   
-    (- E e)                   ;   integer subtraction
-    (- number E)              ;   
-    (* E e)                   ;   integer multiplication
-    (* number E)              ;   
-    (/ E e)                   ;   integer division
-    (/ number E)              ;
-    hole)                     ;   hole
-)
-
 (define red
   (reduction-relation
-    L-simple-v1-Ev
+    L
     #:domain pstate
     
     (--> (in-hole state {(type id t) stat ...})
@@ -830,7 +834,7 @@
 
 ; returns lowest natural not used as id in list of cell values
 ; assumes that it is sorted by ascending id
-(define-metafunction L-simple-v1-Ev
+(define-metafunction L
   new-cid : (cv ...) -> natural
   [(new-cid ()) 0]
   [(new-cid ((natural_before se_before) ... (natural_last se_last)))
@@ -840,12 +844,12 @@
 ; UNUSED ;
 
 #|
-(define-metafunction L-simple-v1
+(define-metafunction L
   intersect-intfts : intft intft -> intft
   [(intersect-intfts intft_1 intft_2)
    (intersect-sorted-intfts (sort-intft intft_1) (sort-intft intft_2))]
 )
-(define-metafunction L-simple-v1+Γ
+(define-metafunction L
   intersect-sorted-intfts : ((val id t) ...) ((val id t) ...) -> ((val id t) ...)
   [(intersect-sorted-intfts 
      ((val id_same t_1) mapping_1 ...) 
@@ -879,7 +883,7 @@
   [(intersect-sorted-intfts () (mapping_2 ...))
    (mapping_2 ...)]
 )
-(define-metafunction L-simple-v1
+(define-metafunction L
   sort-intft : ((val id t) ...) -> ((val id t) ...)
   [(sort-intft ((val id t) ...)) 
    ,(raw-sort-intft (term ((val id t) ...)))]
@@ -894,7 +898,7 @@
 ; convert mappings from Γ to interface type, taking only value declarations
 ; and ignoring type declarations.
 ; Γ_outer is the context needed to construct the type of untyped vds
-(define-metafunction L-simple-v1+Γ
+(define-metafunction L
   Γ-to-intft : Γ Γ -> intft
   [(Γ-to-intft ()) ()]
   [(Γ-to-intft (mapping_s ... (val id t e)) Γ_outer); typed value declarations
@@ -909,7 +913,7 @@
 #|
 ; Γ-extend-with-ds extends Γ with mappings obtained from declarations
 ; Γ_outer is the context needed to construct the type of untyped vds
-(define-metafunction L-simple-v1+Γ
+(define-metafunction L
   Γ-extend-with-ds : Γ Γ (d ...) -> Γ
   
   [(Γ-extend-with-ds Γ Γ_outer ()) Γ]
@@ -923,14 +927,14 @@
 
 
 ; true iff two identifiers are different
-#|(define-metafunction L-simple-v1+Γ
+#|(define-metafunction L
   [(different id_1 id_1) #f]
   [(different id_1 id_2) #t]
 )|# 
 
 
 ; filter-for-ds filters a list of statements, keeping only declarations
-(define-metafunction L-simple-v1+Γ
+(define-metafunction L
   filter-for-ds : (stat ...) -> (d ...)
   [(filter-for-ds ()) ()]
   [(filter-for-ds (d stat_s ...))
@@ -943,7 +947,7 @@
 #|; (wf-oc Γ oc intft) means that in Γ, oc is a well-formed object construction
 ; of precisely (no subtype) interface type intft
 (define-judgment-form
-  L-simple-v1+Γ
+  L
   #:mode (wf-oc I I O)
   #:contract (wf-oc Γ oc intft)
   [(wf-oc Γ oc intft)
@@ -957,7 +961,7 @@
 
 ; (wf-t Γ t) means that in Γ, t is a well-formed type expression
 (define-judgment-form
-  L-simple-v1+Γ
+  L
   #:mode (wf-t I I)
   #:contract (wf-t Γ t)
   [(wf-t Γ Void)]                        ; the type of `void`
@@ -982,7 +986,7 @@
 #|
 ; (wf-prog prog) means that prog is a well-formed program
 (define-judgment-form
-  L-simple-v1+Γ
+  L
   #:mode (wf-prog I)
   #:contract (wf-prog prog)
   [(wf-prog prog)

@@ -59,4 +59,4 @@
 }
 )))
 
-(redex-match L-simple-v1 prog example1)
+(redex-match L prog example1)

@@ -33,7 +33,7 @@
    (f 5)
 })))
 
-(redex-match L-simple-v1 e test)
+(redex-match L e test)
 
 (judgment-holds (types () ,test t) t)
 
