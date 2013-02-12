@@ -149,7 +149,9 @@
     stat-done)                ;   a "done" (executed) statement
   
   (E                          ; expression with a hole to evaluate
-    ((cl id e (vv ...)) E)    ;   1) simplify function 2) simpl. arg 3) apply
+    (E e)                     ;   1) simplify function 
+    ((cl id e (vv ...)) E)    ;   2) simplify arg 
+                              ;   3) apply (cf reduction rule "apply")
     ( (val id_s se_s) ...     ;   object construction with evaluated part,
       (val id t E)            ;     part to evaluate,
       d ...)                  ;     and not yet evaluated part
