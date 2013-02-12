@@ -11,11 +11,14 @@
     d)                        ;   type or value declaration
   
   (statnd                     ; statement which is not a declaration
-    (ign e)                   ;   `(ign e)` instead of `e;` : ignore void
-    { stat stat ... }         ;   block of statements
-    (println e)               ;   print line
-    (if e stat)               ;   if-then with no return value
-    (if e stat stat))         ;   if-then-else with no return value
+    (ign e))                  ;   (ign e) instead of e; : ignore void
+                              ;   for a block of statements, use
+                              ;     (ign { stat_s ... void })
+                              ;   println not part of language, but in library
+                              ;   for an if-then with no return value, use
+                              ;     (ign (if e {stat void} void))
+                              ;   for an if-then-else with no return value, use
+                              ;     (ign (if e {stat_1 void} {stat_2 void}))
   
   (d                          ; declaration
     vd                        ;   value declaration
@@ -57,7 +60,7 @@
                               ;   type member -> that would be DOT, and we're
                               ;   not doing DOT here, so it's commented out.
 
-  (e                          ; "normal" expression
+  (e                          ; any expression (but not a type expression)
     (e e)                     ;   function application
     oc                        ;   object construction
     id                        ;   identifier
@@ -75,8 +78,6 @@
     (d ...))                  ;   (possibly empty) list of declarations
   
   (binop                      ; binary operator expression
-    (&& e e)                  ;   logical and
-    (|| e e)                  ;   logical or
     (== e e)                  ;   equality for primitive types and Null
     (< e e)                   ;   less than for integers
     (+ e e)                   ;   integer addition or string concatenation
@@ -139,13 +140,9 @@
     (E (vv ...) (cv ...)))    ;   expr to evaluate, val values, cell values
   
   (S                          ; statement with a hole to evaluate
-    (ign E)                   ;   `(ign e)` instead of `e;` : ignore void
-    { S stat ... }            ;   evaluate one after the other statement
+    (ign E)                   ;   (ign e) instead of e; : ignore void
     (val id t E)              ;   typed value declaration
     (val id E)                ;   untyped value declaration
-    (println E)               ;   print line
-    (if E stat)               ;   if-then with no return value
-    (if E stat stat)          ;   if-then-else with no return value
     stat-done)                ;   a "done" (executed) statement
   
   (E                          ; expression with a hole to evaluate
@@ -163,10 +160,6 @@
     (if E e e)                ;   if
     (sel E id)                ;   e.id
     (cell E)                  ;   new cell storing mutable value
-    (&& E e)                  ;   logical and
-    (&& #t E)                 ;     lazy evaluation (only if first is true)
-    (|| E e)                  ;   logical or
-    (|| #f E)                 ;     lazy
     (== E e)                  ;   equality
     (== se E)                 ;   
     (< E e)                   ;   less than for integers
@@ -263,27 +256,6 @@
    (is-wf-d Γ d)]
   [(is-wf-stat Γ (ign e)) #t                ; ign-statement
    (judgment-holds (types Γ e Void))] 
-  [(is-wf-stat Γ {})                        ; empty statement block
-   #t]
-  [(is-wf-stat Γ {d stat_after ...})        ; statement block beginning with d
-   (and
-     (is-wf-d Γ d)
-     (is-wf-stat Γ_new {stat_after ...}))
-   (where Γ_new (Γ-extend Γ (d-to-mapping Γ d)))]
-  [(is-wf-stat Γ {stat stat_after ...})     ; stat block not beginning with d
-   (and
-     (is-wf-stat Γ stat)
-     (is-wf-stat Γ {stat_after ...}))]  
-  [(is-wf-stat Γ (println e)) #t            ; println a primitive type
-   (judgment-holds (types Γ e Bool))]
-  [(is-wf-stat Γ (if e stat))               ; if-then with no return value
-   (is-wf-stat Γ stat)
-   (judgment-holds (types Γ e Bool))]
-   [(is-wf-stat Γ (if e stat_1 stat_2))     ; if-then-else with no return value
-    (and
-      (is-wf-stat Γ stat_1)
-      (is-wf-stat Γ stat_2))
-    (judgment-holds (types Γ e Bool))]
 )
 
 ; (wf-d Γ d) means that in Γ, d is a well-formed declaration
@@ -352,7 +324,7 @@
   ;
   ; [(types Γ e t_1)
   ; (side-condition (subtype Γ t_1 t_2))
-  ; ---------------------------------- ; (subsumption)
+  ; ------------------------------------ ; (subsumption)
   ; (types Γ e t_2)]
   ;
   ; Instead, we have to make the function application rule more powerful,
@@ -446,16 +418,6 @@
    (types Γ e_2 Str)
    -------------------------- ; (concat two strings)
    (types Γ (+ e_1 e_2) Str)]
-  
-  [(types Γ e_1 Bool)
-   (types Γ e_2 Bool)
-   -------------------------- ; (logical and)
-   (types Γ (&& e_1 e_2) Bool)]
-    
-  [(types Γ e_1 Bool)
-   (types Γ e_2 Bool)
-   -------------------------- ; (logical or)
-   (types Γ (|| e_1 e_2) Bool)]
   
   [(types Γ e_1 Str)
    (types Γ e_2 Str)
@@ -570,7 +532,7 @@
   [(eval-type Γ primt) primt ]       ; primitive types
   [(eval-type Γ ((val id t) ...))    ; interface types
    ((val id (eval-type Γ t)) ...)]
-  [(eval-type Γ (→ t_arg t_ret))    ; function types
+  [(eval-type Γ (→ t_arg t_ret))     ; function types
    (→ (eval-type Γ t_arg)
        (eval-type Γ t_ret))]
   [(eval-type Γ (& t_1 t_2))         ; intersection types
@@ -583,7 +545,7 @@
    (var (eval-type Γ t))]
 )
 
-; We don't (yet) have union types, but in some special cases, it is still 
+; We don't (yet) have union types, but if one is a subtype of the other, it is
 ; possible to calculate the union of two types.
 ; Types given as argument must be simplified (evaluated) before.
 ; Type returned is also simplified.
@@ -644,44 +606,16 @@
     L
     #:domain pstate
     
-    (--> (in-hole state {(type id t) stat ...})
-         (in-hole state {stat ...})
-         "{t}") ; ignore type declaration inside block statement
     (--> (in-hole state {(type id t) stat ... e})
          (in-hole state {stat ... e})
          "{t-e}") ; ignore type declaration inside block expression
          
-    (--> (in-hole (E (vv ...)         (cv ...)) {(val id t se) stat ...})
-         (in-hole (E (vv ... (id se)) (cv ...)) {stat ...})
-         "{tv}") ; typed value inside block statement
     (--> (in-hole (E (vv ...)         (cv ...)) {(val id t se) stat ... e})
          (in-hole (E (vv ... (id se)) (cv ...)) {stat ... e})
          "{tv-e}") ; typed value inside block expression
-    (--> (in-hole (E (vv ...)         (cv ...)) {(val id se) stat ...})
-         (in-hole (E (vv ... (id se)) (cv ...)) {stat ...})
-         "{utv}") ; untyped value inside block statement
     (--> (in-hole (E (vv ...)         (cv ...)) {(val id se) stat ... e})
          (in-hole (E (vv ... (id se)) (cv ...)) {stat ... e})
          "{utv-e}") ; untyped value inside block expression
-    
-    (--> (in-hole state (println literal))
-         ,(begin
-            (printf "~a\n" (term literal))
-            (term (in-hole state stat-done)))
-         "println")
-    
-    (--> (in-hole state (if true stat))
-         (in-hole state stat)
-         "if-t-s") ; if true statement
-    (--> (in-hole state (if false stat))
-         (in-hole state stat-done)
-         "if-f-s") ; if false statement
-    (--> (in-hole state (if true stat_1 stat_2))
-         (in-hole state stat_1)
-         "if-t-s1s2") ; if true
-    (--> (in-hole state (if false stat_1 stat_2))
-         (in-hole state stat_2)
-         "if-f-s1s2") ; if false
     
     (--> (in-hole (E (vv_env ... ) (cv ...)) 
                   ((cl id e (vv_cl ...)) se_arg))
@@ -725,9 +659,6 @@
     (--> (in-hole state {se})
          (in-hole state se)
          "{se}")
-    (--> (in-hole state {stat-done stat ...})
-         (in-hole state {stat ...})
-         "{sd}") ; stat-done in block statement
     (--> (in-hole state {stat-done stat ... e})
          (in-hole state {stat ... e})
          "{sd-e}") ; stat-done in block expression
@@ -775,13 +706,7 @@
          (in-hole (E (vv ...) (cv ... (n se))) (cid n))
          (where n (new-cid (cv ...)))
          "new-cell")
-    
-    (--> (in-hole state (&& false e    )) (in-hole state false) "&&f"  )
-    (--> (in-hole state (&& true  false)) (in-hole state false) "&&tf" )
-    (--> (in-hole state (&& true  true )) (in-hole state true ) "&&tt" )
-    (--> (in-hole state (|| true  e    )) (in-hole state true ) "||t"  )
-    (--> (in-hole state (|| false true )) (in-hole state true ) "||ft" )
-    (--> (in-hole state (|| false false)) (in-hole state false) "||ff" )
+
     (--> (in-hole state (== true  true )) (in-hole state true ) "==tt" )
     (--> (in-hole state (== true  false)) (in-hole state false) "==tf" )
     (--> (in-hole state (== false true )) (in-hole state false) "==ft" )
@@ -842,158 +767,3 @@
   [(new-cid ((natural_before se_before) ... (natural_last se_last)))
    ,(+ (term natural_last) 1)]
 )
-
-; UNUSED ;
-
-#|
-(define-metafunction L
-  intersect-intfts : intft intft -> intft
-  [(intersect-intfts intft_1 intft_2)
-   (intersect-sorted-intfts (sort-intft intft_1) (sort-intft intft_2))]
-)
-(define-metafunction L
-  intersect-sorted-intfts : ((val id t) ...) ((val id t) ...) -> ((val id t) ...)
-  [(intersect-sorted-intfts 
-     ((val id_same t_1) mapping_1 ...) 
-     ((val id_same t_2) mapping_2 ...))
-   ,(cons (term (val id_same (intersect-ts t_1 t_2)))
-          (term (intersect-sorted-intfts (mapping_1 ...) (mapping_2 ...))))]
-  [(intersect-sorted-intfts 
-     ((val id_same t_1) mapping_1 ...) 
-     (mapping_21 ... (val id_same t_2) mapping_22 ...))
-   ,(cons (term (val id_same (intersect-ts t_1 t_2)))
-          (term (intersect-sorted-intfts (mapping_1 ...) (mapping_22 ...))))]
-  [(intersect-sorted-intfts 
-     (mapping_11 ... (val id_same t_1) mapping_12 ...) 
-     ((val id_same t_2) mapping_2 ...))
-   ,(cons (term (val id_same (intersect-ts t_1 t_2)))
-          (term (intersect-sorted-intfts (mapping_12 ...) (mapping_2 ...))))]
-  [(intersect-sorted-intfts 
-     ((val id_1 t_1) mapping_1 ...) 
-     ((val id_2 t_2) mapping_2 ...))
-   ,(if (string<? (symbol->string (term id_1))
-                  (symbol->string (term id_2)))
-       (cons (term (val id_1 t_1))
-          (cons (term (val id_2 t_2))
-             (term (intersect-sorted-intfts (mapping_1 ...) (mapping_2 ...)))))
-       (cons (term (val id_2 t_2))
-          (cons (term (val id_1 t_1))
-             (term (intersect-sorted-intfts (mapping_1 ...) (mapping_2 ...))))))
-   ]
-  [(intersect-sorted-intfts (mapping_1 ...) ())
-   (mapping_1 ...)]
-  [(intersect-sorted-intfts () (mapping_2 ...))
-   (mapping_2 ...)]
-)
-(define-metafunction L
-  sort-intft : ((val id t) ...) -> ((val id t) ...)
-  [(sort-intft ((val id t) ...)) 
-   ,(raw-sort-intft (term ((val id t) ...)))]
-)
-(define (raw-sort-intft decls) 
-  (sort decls #:key (lambda (x) (symbol->string (cadr x))) string<?)
-)
-|#
-
-#|
-
-; convert mappings from Γ to interface type, taking only value declarations
-; and ignoring type declarations.
-; Γ_outer is the context needed to construct the type of untyped vds
-(define-metafunction L
-  Γ-to-intft : Γ Γ -> intft
-  [(Γ-to-intft ()) ()]
-  [(Γ-to-intft (mapping_s ... (val id t e)) Γ_outer); typed value declarations
-   ((Γ-to-intft (mapping_s) ... (val id t)))]
-  [(Γ-to-intft (mapping_s ... (val id e)) Γ_outer)  ; untyped value declarations
-   ((Γ-to-intft (mapping_s) ... (val id (calc-e-type Γ_outer e))))]
-  [(Γ-to-intft (mapping_s ... (type id t)) Γ_outer) ; ignore type declarations
-   (Γ-to-intft (mapping_s ...))]
-)
-
-
-#|
-; Γ-extend-with-ds extends Γ with mappings obtained from declarations
-; Γ_outer is the context needed to construct the type of untyped vds
-(define-metafunction L
-  Γ-extend-with-ds : Γ Γ (d ...) -> Γ
-  
-  [(Γ-extend-with-ds Γ Γ_outer ()) Γ]
-  
-  [(Γ-extend-with-ds Γ Γ_outer (d d_s ...))
-   (Γ-extend-with-ds 
-        (Γ-extend Γ d)
-        (Γ-extend Γ_outer d) ; current d visible for subsequent d_s
-        (d_s ...))]
-)|#
-
-
-; true iff two identifiers are different
-#|(define-metafunction L
-  [(different id_1 id_1) #f]
-  [(different id_1 id_2) #t]
-)|# 
-
-
-; filter-for-ds filters a list of statements, keeping only declarations
-(define-metafunction L
-  filter-for-ds : (stat ...) -> (d ...)
-  [(filter-for-ds ()) ()]
-  [(filter-for-ds (d stat_s ...))
-   ((filter-for-ds (stat_s)) ... d)]
-  [(filter-for-ds (stat_notd stat_s ...))
-   ((filter-for-ds (stat_s)) ...)]
-)
-
-
-#|; (wf-oc Γ oc intft) means that in Γ, oc is a well-formed object construction
-; of precisely (no subtype) interface type intft
-(define-judgment-form
-  L
-  #:mode (wf-oc I I O)
-  #:contract (wf-oc Γ oc intft)
-  [(wf-oc Γ oc intft)
-   (where intft (calc-oc-type Γ oc))]
-)|#
-
-|#
-
-#|
-(wf-t Γ t) is not used because we always use eval-type instead
-
-; (wf-t Γ t) means that in Γ, t is a well-formed type expression
-(define-judgment-form
-  L
-  #:mode (wf-t I I)
-  #:contract (wf-t Γ t)
-  [(wf-t Γ Void)]                        ; the type of `void`
-  [(wf-t Γ Null)]                        ; the type of `null`
-  [(wf-t Γ primt)]                       ; primitive type
-  [(wf-t Γ (var t))                      ; reference cell type
-   (wf-t Γ t)]
-  [(wf-t Γ ((val id t) ...))             ; interface type
-   (wf-t Γ t) ... ]
-  [(wf-t Γ (→ t_arg t_ret))             ; function type
-   (wf-t Γ t_arg)
-   (wf-t Γ t_ret)]
-  [(wf-t Γ (& t_1 t_2))                  ; intersection type currently only for
-   (wf-t Γ t_1)
-   (wf-t Γ t_2)]
-  [(wf-t Γ id)                           ; id referring to a type decl
-   (where t (Γ-lookup-type Γ id))]
-)
-|#
-
-  
-#|
-; (wf-prog prog) means that prog is a well-formed program
-(define-judgment-form
-  L
-  #:mode (wf-prog I)
-  #:contract (wf-prog prog)
-  [(wf-prog prog)
-   ; just check if prog is a well-formed statement in the empty enviroment
-   (side-condition (is-wf-stat () prog))]
-)
-|#
-  
