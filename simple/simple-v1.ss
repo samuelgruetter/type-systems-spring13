@@ -36,7 +36,6 @@
   
   (t                          ; type expression
     Void                      ;   the type of `void`
-    Null                      ;   the type of `null`
     primt                     ;   primitive type
     intft                     ;   interface type
     funct                     ;   function type
@@ -79,7 +78,7 @@
     (d ...))                  ;   (possibly empty) list of declarations
   
   (binop                      ; binary operator expression
-    (== e e)                  ;   equality for primitive types and Null
+    (== e e)                  ;   equality for primitive types
     (< e e)                   ;   less than for integers
     (+ e e)                   ;   integer addition or string concatenation
     (- e e)                   ;   integer subtraction
@@ -90,7 +89,6 @@
     number                    ;   integer (provided by racket)
     true                      ;   boolean
     false                     ;   boolean
-    null                      ;   bottom type
     void                      ;   returned by functions used as statements
     string)                   ;   string (provided by racket)
   
@@ -210,13 +208,27 @@
   [(not-in-vvs (vv ...) id) #t]
 )
 
+(define-metafunction L
+  [(different any_1 any_1) #f]
+  [(different any_1 any_2) #t]
+)
+
 ;;; Typechecking ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; (types Γ e t) means that in Γ, e is of type t
-(define-judgment-form
-  L
+(define-judgment-form L
   #:mode (types I I O)
   #:contract (types Γ e t)
+  
+  ; We cannot write this rule, because redex runs into an infinite loop:
+  ; 
+  ; [(types Γ e t)
+  ;  (where t_simpl (eval-type Γ t))
+  ;  (side-condition (different t t_simpl)) ; <- does not help
+  ;  -------------------------------------- ; (simplify type)
+  ;  (types Γ e t_simpl)]
+  ;
+  ; TODO but how can we do it?
  
   ; We cannot write this rule, because redex cannot guess t_2:
   ;
@@ -257,7 +269,7 @@
   
   [--------------------  ; (void literal)
    (types Γ void Void)]
-  
+   
   [(types Γ e_1 Bool)
    (types Γ e_2 t_2)
    (types Γ e_3 t_3)
@@ -390,6 +402,17 @@
   
 )
 
+; convenience method for testing
+(define-judgment-form L
+  #:mode (types-as I I)
+  #:contract (types-as e t)
+  [(types {} e t_1)
+   (subtype {} t_1 t_2)
+   ------------------
+   (types-as e t_2)]
+)
+
+
 ; (sub t_1 t_2) means that t_1 <: t_2
 ; t_1 and t_2 must be evaluated before
 (define-judgment-form L
@@ -403,9 +426,6 @@
   
   [----------------
    (sub Void Void)]
-  
-  [----------------
-   (sub Null Null)]
   
   [------------------
    (sub primt primt)]
@@ -464,7 +484,6 @@
 (define-metafunction L
   eval-type : Γ t -> t
   [(eval-type Γ Void) Void ]         ; Void
-  [(eval-type Γ Null) Null ]         ; Null
   [(eval-type Γ primt) primt ]       ; primitive types
   [(eval-type Γ ((val id t) ...))    ; interface types
    ((val id (eval-type Γ t)) ...)]

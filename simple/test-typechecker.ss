@@ -28,7 +28,8 @@
     [(val b []) (val a [])]))
   (term [(val b []) (val a [])]) #t)
 
-(test-equal (term (Γ-lookup-val [(val a Str)] a)) (term Str))
+(test-equal (judgment-holds (types {(val a Str)} a Str)) #t)
+(test-equal (judgment-holds (types {(val a Int)} a Str)) #f)
 
 (test-equal (judgment-holds (sub Str Str)) #t)
 

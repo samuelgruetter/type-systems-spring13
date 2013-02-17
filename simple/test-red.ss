@@ -15,7 +15,11 @@
   (val i (var Int) (cell 2))
   (val n Int 12)
   (val nthPrime (→ Int Int) (↦ (n Int) (if (== n 1) 2 3)))
-  nthPrime
+  (nthPrime 1)
 }))
+
+(test-->> red
+   primelist-e
+   (term 2))
 
 (test-results)
