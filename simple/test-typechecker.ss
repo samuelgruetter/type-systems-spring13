@@ -40,27 +40,27 @@
 
 (test-types-equal 
   (term (intersect-ts 
-    (-> [(val a Str)] [(val foo [])])
-    (-> [(val a Str)] [(val bar [])])))
-  (term (-> [(val a Str)] [(val bar []) (val foo [])]))  #t)
+    (→ [(val a Str)] [(val foo [])])
+    (→ [(val a Str)] [(val bar [])])))
+  (term (→ [(val a Str)] [(val bar []) (val foo [])]))  #t)
 
 (test-types-equal 
   (term (intersect-ts 
-    (-> [(val a Str)] [(val bar [])])
-    (-> [(val a Str)] [(val foo [])])))
-  (term (-> [(val a Str)] [(val foo []) (val bar [])]))  #t)
+    (→ [(val a Str)] [(val bar [])])
+    (→ [(val a Str)] [(val foo [])])))
+  (term (→ [(val a Str)] [(val foo []) (val bar [])]))  #t)
 
 (test-types-equal 
   (term (intersect-ts 
-    (-> [(val a Str)] [(val bar [])])
-    (-> [(val a Str)] [(val foo [])])))
-  (term (-> [(val a Str)] [(val foo [])]))  #f)
+    (→ [(val a Str)] [(val bar [])])
+    (→ [(val a Str)] [(val foo [])])))
+  (term (→ [(val a Str)] [(val foo [])]))  #f)
 
 (test-types-equal 
   (term (intersect-ts 
-    (-> [(val a Str)] [(val bar [])])
-    (-> [(val a Str)] [(val foo [])])))
-  (term (-> [(val a Str)] [(val foo []) (val bar []) (val bar2 [])])) #f)
+    (→ [(val a Str)] [(val bar [])])
+    (→ [(val a Str)] [(val foo [])])))
+  (term (→ [(val a Str)] [(val foo []) (val bar []) (val bar2 [])])) #f)
 
 (test-equal (judgment-holds (sub Int Int)) #t)
 
