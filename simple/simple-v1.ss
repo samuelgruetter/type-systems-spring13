@@ -72,7 +72,7 @@
                               ;     type (var t) if e is of type t
     literal                   ;   literal
     rtse                      ;   runtime simplified expression
-    peoc)                     ;   partially evaluated object construction (runtime)
+    peoc)                     ;   partially evaluated oc (runtime)
   
   (oc                         ; object construction
     (d ...))                  ;   (possibly empty) list of declarations
@@ -228,7 +228,8 @@
   ;  -------------------------------------- ; (simplify type)
   ;  (types Γ e t_simpl)]
   ;
-  ; TODO but how can we do it?
+  ; Instead, each rule whose "input" are types from the source code has
+  ; to call eval-type.
  
   ; We cannot write this rule, because redex cannot guess t_2:
   ;
@@ -250,9 +251,7 @@
    --------------------------------------------------- ; (Type of anon func)
    (types (mapping ...) (↦ (id t_1) e) (→ t_1 t_2))]
   
-  [(side-condition (not-in-Γ (mapping_before ...) id))
-   (side-condition (not-in-Γ (mapping_after  ...) id))
-   ----------------------------------------------- ; (Extract val's type from Γ)
+  [----------------------------------------------- ; (Extract val's type from Γ)
    (types (mapping_before ... (val id t) mapping_after ...) id t)]
   
   [--------------------  ; (integer literals)
@@ -282,19 +281,21 @@
   
   [(types (mapping_Γ ...) e t_sub)
    (subtype (mapping_Γ ...) t_sub t)
-   (types (mapping_Γ ... (val id t)) {stat_s ... e_last} t_last)
+   (where t_simpl (eval-type (mapping_Γ ...) t))
+   (types (mapping_Γ ... (val id t_simpl)) {stat_s ... e_last} t_last)
    (side-condition (not-in-Γ (mapping_Γ ...) id))
    --------------------------------------- ; (expr block starting with typed vd)
    (types (mapping_Γ ...) { (val id t e) stat_s ... e_last } t_last)]
   
   [(types (mapping_Γ ...) e t)
-   (types (mapping_Γ ... (val id t)) {stat_s ... e_last} t_last)
+   (where t_simpl (eval-type (mapping_Γ ...) t))
+   (types (mapping_Γ ... (val id t_simpl)) {stat_s ... e_last} t_last)
    (side-condition (not-in-Γ (mapping_Γ ...) id))
    ------------------------------------- ; (expr block starting with untyped vd)
    (types (mapping_Γ ...) { (val id e) stat_s ... e_last } t_last)]
   
-  [(types (mapping_Γ ... (type id t)) {stat_s ... e_last} t_last)
-   (side-condition (wf-t (mapping_Γ ...) t))
+  [(where t_simpl (eval-type (mapping_Γ ...) t))
+   (types (mapping_Γ ... (type id t_simpl)) {stat_s ... e_last} t_last)
    (side-condition (not-in-Γ (mapping_Γ ...) id))
    ------------------------------------- ; (expr block starting with type decl)
    (types (mapping_Γ ...) { (type id t) stat_s ... e_last } t_last)]
@@ -309,19 +310,21 @@
   
   [(types (mapping_Γ ...) e t_sub)
    (subtype (mapping_Γ ...) t_sub t)
-   (types (mapping_Γ ... (val id t)) (d_s ...) (mapping_t ...))
+   (where t_simpl (eval-type (mapping_Γ ...) t))
+   (types (mapping_Γ ... (val id t_simpl)) (d_s ...) (mapping_t ...))
    (side-condition (not-in-Γ (mapping_Γ ...) id))
    ------------------------------------------- ;(type of oc w/ typed val decl)
-   (types (mapping_Γ ...) ((val id t e) d_s ...) (mapping_t ... (val id t)))]
+(types (mapping_Γ ...) ((val id t e) d_s ...) (mapping_t ... (val id t_simpl)))]
   
   [(types (mapping_Γ ...) e t)
-   (types (mapping_Γ ... (val id t)) (d_s ...) (mapping_t ...))
+   (where t_simpl (eval-type (mapping_Γ ...) t))
+   (types (mapping_Γ ... (val id t_simpl)) (d_s ...) (mapping_t ...))
    (side-condition (not-in-Γ (mapping_Γ ...) id))
    ------------------------------------------- ;(type of oc w/ untyped val decl)
-   (types (mapping_Γ ...) ((val id e) d_s ...) (mapping_t ... (val id t)))]
+  (types (mapping_Γ ...) ((val id e) d_s ...) (mapping_t ... (val id t_simpl)))]
   
-  [(types (mapping_Γ ... (type id t)) (d_s ...) intft)
-   (side-condition (wf-t (mapping_Γ ...) t))
+  [(where t_simpl (eval-type (mapping_Γ ...) t))
+   (types (mapping_Γ ... (type id t_simpl)) (d_s ...) intft)
    (side-condition (not-in-Γ (mapping_Γ ...) id))
    ------------------------------------------- ;(type of oc w/ type decl)
    (types (mapping_Γ ...) ((type id t) d_s ...) intft)]
@@ -472,13 +475,14 @@
   [(types-equal t_1 t_2) #f]
 )
 
+#|unused
 ; (wf-t Γ t) rejects e.g. bad type intersections
 (define-judgment-form L
   #:mode (wf-t I I)
   #:contract (wf-t Γ t)
   [(wf-t Γ t)
    (where t_2 (eval-type Γ t))]
-)
+)|#
 
 ; (eval-type Γ t) evaluates a type expression t in environment Γ
 (define-metafunction L
@@ -773,13 +777,15 @@
 )
 (define-metafunction L
   Γ-lookup-val : Γ id -> t-or-#f
-  [(Γ-lookup-val (mapping_before ... (val id_req t_req) mapping_after ...) id_req) 
+  [(Γ-lookup-val (mapping_before ... (val id_req t_req) mapping_after ...) 
+id_req) 
    t_req]
   [(Γ-lookup-val Γ id_req) #f]
 )
 (define-metafunction L
   Γ-lookup-type : Γ id -> t-or-#f
-  [(Γ-lookup-type (mapping_before ... (type id_req t_req) mapping_after ...) id_req) 
+  [(Γ-lookup-type (mapping_before ... (type id_req t_req) mapping_after ...) 
+id_req) 
    t_req]
   [(Γ-lookup-type Γ id_req) #f]
 )
