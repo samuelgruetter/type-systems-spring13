@@ -20,19 +20,17 @@
          (val at (→ Int (var Int)))
          (val pushBack (→ Int Void))
       ])
-      ; TODO uncomment type 
-      ; (not possible yet because IntVector is not evaluated when it should)
-      (val newVector #|(→ Void IntVector)|# (↦ (v Void) (
-         (val fSize (var Int) (cell 0))
-         (val e0 (var Int) (cell 0))
-         (val e1 (var Int) (cell 0))
-         (val e2 (var Int) (cell 0))
-         (val e3 (var Int) (cell 0))
+      (val newVector (↦ (v Void) (
+         (val fSize (cell 0))
+         (val e0 (cell 0))
+         (val e1 (cell 0))
+         (val e2 (cell 0))
+         (val e3 (cell 0))
          
          (val size (↦ (v Void) ((sel fSize get) void)))
          (val maxSize 4)
          (val empty (↦ (v Void) (== 0 ((sel fSize get) void))))
-         (val at (→ Int (var Int)) (↦ (i Int) {
+         (val at #|(→ Int (var Int))|# (↦ (i Int) {
             (if (== i 0) 
                e0 
                ((if (== i 1) 
@@ -43,7 +41,7 @@
                         e3 
                         (cell 44444444)))))))) ; error
          }))
-         (val pushBack (→ Int Void) (↦ (el Int) {
+         (val pushBack #|(→ Int Void)|# (↦ (el Int) {
             (ign ((sel (at ((sel fSize get) void)) set) el))
             ; in C, this would be fSize++ :D
             ((sel fSize set) (+ ((sel fSize get) void) 1))

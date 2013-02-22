@@ -12,9 +12,9 @@
    (term (7 () ())))
 
 (define primelist-e (term {
-  (val i (var Int) (cell 2))
-  (val n Int 12)
-  (val nthPrime (→ Int Int) (↦ (n Int) (if (== n 1) 2 3)))
+  (val i (cell 2))
+  (val n 12)
+  (val nthPrime (↦ (n Int) (if (== n 1) 2 3)))
   (nthPrime 1)
 }))
 

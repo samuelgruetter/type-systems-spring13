@@ -10,8 +10,8 @@
 ; note that function application of function taking void is (f void), not (f ())
 
 (define lib (term (
-  (val log (var Str) (cell ""))
-  (val println (→ Str Void) (↦ (s Str) ({
+  (val log #|(var Str)|# (cell ""))
+  (val println #|(→ Str Void)|# (↦ (s Str) ({
     ; log.set(log.get() + s + "\n")
     ((sel log set) (+ (+ ((sel log get) void) s) "\n"))
   })))

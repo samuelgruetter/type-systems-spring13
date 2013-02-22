@@ -25,8 +25,8 @@
     td)                       ;   type declaration
   
   (vd                         ; value declaration
-    (val id t e)              ;   typed value declaration 
-    (val id e))               ;   untyped value declaration
+    ;(val id t e)             ;   typed vd omitted for simplicity
+    (val id e))               ;   untyped vd
   
                               ; always keep in mind that an id can refer to a
                               ; value, but also to a type
@@ -141,7 +141,6 @@
   
   (S                          ; statement with a hole to evaluate
     (ign E)                   ;   (ign e) instead of e; : ignore void
-    (val id t E)              ;   typed value declaration
     (val id E)                ;   untyped value declaration
     stat-done)                ;   a "done" (executed) statement
   
@@ -150,11 +149,8 @@
     ((cl id e (vv ...)) E)    ;   2) simplify arg 
                               ;   3) apply (cf reduction rule "apply")
     ( (id_s se_s) ...         ;   object construction with evaluated part,
-      (val id t E)            ;     part to evaluate,
+      (val id E)              ;     part to evaluate,
       d ...)                  ;     and not yet evaluated part
-    ( (id_s se_s) ...         ;   dito, but
-      (val id E)              ;     val decl is untyped
-      d ...)                  ;
     {S stat ... e}            ;   block expression
     {E}                       ;
     (if E e e)                ;   if
@@ -204,7 +200,7 @@
 
 (define-metafunction L
   not-in-vvs : (vv ...) id -> boolean
-  [(not-in-vvs (vv_before ... (id se) mapping_vv ...) id) #f]
+  [(not-in-vvs (vv_before ... (id se) vv_after ...) id) #f]
   [(not-in-vvs (vv ...) id) #t]
 )
 
@@ -278,15 +274,7 @@
   [(types Γ e t)
    ----------------- ; (expr block of one single expression)
    (types Γ {e} t)]
-  
-  [(types (mapping_Γ ...) e t_sub)
-   (subtype (mapping_Γ ...) t_sub t)
-   (where t_simpl (eval-type (mapping_Γ ...) t))
-   (types (mapping_Γ ... (val id t_simpl)) {stat_s ... e_last} t_last)
-   (side-condition (not-in-Γ (mapping_Γ ...) id))
-   --------------------------------------- ; (expr block starting with typed vd)
-   (types (mapping_Γ ...) { (val id t e) stat_s ... e_last } t_last)]
-  
+    
   [(types (mapping_Γ ...) e t)
    (where t_simpl (eval-type (mapping_Γ ...) t))
    (types (mapping_Γ ... (val id t_simpl)) {stat_s ... e_last} t_last)
@@ -307,15 +295,7 @@
   
   [---------------- ; (type of empty oc)
    (types Γ () [])]
-  
-  [(types (mapping_Γ ...) e t_sub)
-   (subtype (mapping_Γ ...) t_sub t)
-   (where t_simpl (eval-type (mapping_Γ ...) t))
-   (types (mapping_Γ ... (val id t_simpl)) (d_s ...) (mapping_t ...))
-   (side-condition (not-in-Γ (mapping_Γ ...) id))
-   ------------------------------------------- ;(type of oc w/ typed val decl)
-(types (mapping_Γ ...) ((val id t e) d_s ...) (mapping_t ... (val id t_simpl)))]
-  
+    
   [(types (mapping_Γ ...) e t)
    (where t_simpl (eval-type (mapping_Γ ...) t))
    (types (mapping_Γ ... (val id t_simpl)) (d_s ...) (mapping_t ...))
@@ -570,10 +550,6 @@
          (in-hole state {stat ... e})
          "{t-e}") ; ignore type declaration inside block expression
          
-    (--> (in-hole (E (vv ...)         (cv ...)) {(val id t se) stat ... e})
-         (in-hole (E (vv ... (id se)) (cv ...)) {stat ... e})
-         (side-condition (term (not-in-vvs (vv ...) id)))
-         "{tv-e}") ; typed value inside block expression
     (--> (in-hole (E (vv ...)         (cv ...)) {(val id se) stat ... e})
          (in-hole (E (vv ... (id se)) (cv ...)) {stat ... e})
          (side-condition (term (not-in-vvs (vv ...) id)))
@@ -608,15 +584,6 @@
                                                   d ...))
          (side-condition (term (not-in-vvs (vv ...) id)))
          "oc-utv") ; object construction untyped value
-    
-    (--> (in-hole (E (vv ...) (cv ...)) ( (id_s se_s) ...
-                                          (val id t se)
-                                          d ...))
-         (in-hole (E (vv ... (id se)) (cv ...)) ( (id_s se_s) ... 
-                                                  (id se)
-                                                  d ...))
-         (side-condition (term (not-in-vvs (vv ...) id)))
-         "oc-tv") ; object construction typed value
     
     (--> (in-hole state {stat-done})
          (in-hole state stat-done)
@@ -829,29 +796,9 @@ id_req)
   [(wf-d Γ d)
    (side-condition (is-wf-d Γ d))]
 )
-(define-metafunction L
-  is-wf-d : Γ d -> boolean
-  [(is-wf-d Γ (val id t e)) #t            ; typed val decl
-   (judgment-holds (subtype Γ (calc-e-type Γ e) t))]
-  [(is-wf-d Γ (val id e)) #t              ; untyped val decl
-   (where t_unused (calc-e-type Γ e))]
-  [(is-wf-d Γ (type id t)) #t             ; type decl
-   (judgment-holds (wf-t Γ t))]
-)
 |#
 
 #|
-
-; converts a value declaration to a mapping which can be stored in a Γ
-; Γ_outer is the context needed to construct the type of untyped vds
-(define-metafunction L
-  vd-to-mapping : Γ_outer vd -> mapping
-  [(vd-to-mapping Γ_outer (val id t e))    ; typed val decl
-   (val id t)]
-  [(vd-to-mapping Γ_outer (val id e))      ; untyped val decl
-   (val id t)
-   (where t (calc-e-type Γ_outer e))]
-)
 
 ; converts a value or type declaration to a mapping which can be stored in a Γ
 ; Γ_outer is the context needed to construct the type of untyped vds
