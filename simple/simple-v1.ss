@@ -107,6 +107,8 @@
     (type id t))              ;   (myTypeAlias -> aType)
   (Γ                          ; typing environment
     (mapping ...))            ;   list of mappings
+  (Γ-or-#f                    ; a Γ or #f, meaning that Γ could not be extended
+    Γ #f)
   
   ; definitions needed for the reduction relation
   
@@ -133,7 +135,7 @@
   (cv                         ; cell value
     (natural se))             ;   maps a natural-id to the current value of cell
 
-  (pstate                      ; state of program execution
+  (pstate                     ; state of program execution
     (e (vv ...) (cv ...)))    ;   expr to evaluate, val values, cell values
 
   (state                      ; state of program execution, with one hole
@@ -191,11 +193,21 @@
 ; only "judgment" is correct. Avoid being confused by weird error messages due
 ; to misspelling that word.
 
+#|
 (define-metafunction L
   not-in-Γ : Γ id -> boolean
   [(not-in-Γ (mapping_before ... (val  id t) mapping_after ...) id) #f]
   [(not-in-Γ (mapping_before ... (type id t) mapping_after ...) id) #f]
   [(not-in-Γ Γ id) #t]
+)|#
+
+(define-metafunction L
+  extend : Γ mapping -> Γ or #f
+  [(extend (mapping_i ... (val  id t_1) mapping_j ...) (val  id t_2)) #f]
+  [(extend (mapping_i ... (type id t_1) mapping_j ...) (val  id t_2)) #f]
+  [(extend (mapping_i ... (val  id t_1) mapping_j ...) (type id t_2)) #f]
+  [(extend (mapping_i ... (type id t_1) mapping_j ...) (type id t_2)) #f]
+  [(extend (mapping_i ...) mapping_new) (mapping_i ... mapping_new)]
 )
 
 (define-metafunction L
@@ -214,7 +226,7 @@
 ; (types Γ e t) means that in Γ, e is of type t
 (define-judgment-form L
   #:mode (types I I O)
-  #:contract (types Γ e t)
+  #:contract (types Γ-or-#f e t)
   
   ; We cannot write this rule, because redex runs into an infinite loop:
   ; 
@@ -240,124 +252,126 @@
   [(types Γ e_fun (→ t_arg2 t_ret))
    (types Γ e_arg t_arg1)
    (subtype Γ t_arg1 t_arg2)
-   ------------------------------ ; (Function Application)
+   --------------------------------                 ; (function application)
    (types Γ (e_fun e_arg) t_ret)]
  
-  [(types (mapping ... (val id t_1)) e t_2)
-   --------------------------------------------------- ; (Type of anon func)
-   (types (mapping ...) (↦ (id t_1) e) (→ t_1 t_2))]
+  [(types (extend Γ (val id t_1)) e t_2)
+   ----------------------------------------         ; (type of anon func)
+   (types Γ (↦ (id t_1) e) (→ t_1 t_2))]
   
-  [----------------------------------------------- ; (Extract val's type from Γ)
-   (types (mapping_before ... (val id t) mapping_after ...) id t)]
+  [(where (mapping_i ... (val id t) mapping_j ...) Γ)
+   ------------------------------------------------ ; (lookup)
+   (types Γ id t)]
   
-  [--------------------  ; (integer literals)
+  [--------------------                             ; (integer literals)
    (types Γ number Int)]
   
-  [--------------------  ; (string literals)
+  [--------------------                             ; (string literals)
    (types Γ string Str)]
   
-  [--------------------  ; (boolean literal)
+  [--------------------                             ; (boolean literal)
    (types Γ true Bool)]
   
-  [--------------------  ; (boolean literal)
+  [--------------------                             ; (boolean literal)
    (types Γ false Bool)]
   
-  [--------------------  ; (void literal)
+  [--------------------                             ; (void literal)
    (types Γ void Void)]
    
   [(types Γ e_1 Bool)
    (types Γ e_2 t_2)
    (types Γ e_3 t_3)
-   --------------------------------------------- ; (if-then-else expression)
+   ---------------------------------------------    ; (if-then-else expression)
    (types Γ (if e_1 e_2 e_3) (union-ts t_2 t_3))]
   
   [(types Γ e t)
-   ----------------- ; (expr block of one single expression)
+   -----------------                                ; (block of one expr)
    (types Γ {e} t)]
     
-  [(types (mapping_Γ ...) e t)
-   (where t_simpl (eval-type (mapping_Γ ...) t))
-   (types (mapping_Γ ... (val id t_simpl)) {stat_s ... e_last} t_last)
-   (side-condition (not-in-Γ (mapping_Γ ...) id))
-   ------------------------------------- ; (expr block starting with untyped vd)
-   (types (mapping_Γ ...) { (val id e) stat_s ... e_last } t_last)]
+  [(types Γ e t)
+   (where Γ_new (extend Γ (val id t)))
+   (types Γ_new {stat_s ... e_last} t_last)         
+   ------------------------------------------------ ; (block starting with vd)
+   (types Γ {(val id e) stat_s ... e_last} t_last)]
   
-  [(where t_simpl (eval-type (mapping_Γ ...) t))
-   (types (mapping_Γ ... (type id t_simpl)) {stat_s ... e_last} t_last)
-   (side-condition (not-in-Γ (mapping_Γ ...) id))
-   ------------------------------------- ; (expr block starting with type decl)
-   (types (mapping_Γ ...) { (type id t) stat_s ... e_last } t_last)]
+  [(where t_simpl (eval-type Γ t))
+   (where Γ_new (extend Γ (type id t_simpl)))
+   (types Γ_new {stat_s ... e_last} t_last)
+   ------------------------------------------------ ; (block starting with td)
+   (types Γ {(type id t) stat_s ... e_last} t_last)]
   
   [(types Γ {stat_s ... e} t)
    (types Γ e_void Void)
-   ------------------------------------------ ; (expr block starting with ign)
+   ------------------------------------------       ; (block starting with ign)
    (types Γ { (ign e_void) stat_s ... e } t)]
   
-  [---------------- ; (type of empty oc)
+  [----------------                                 ; (type of empty oc)
    (types Γ () [])]
     
-  [(types (mapping_Γ ...) e t)
-   (where t_simpl (eval-type (mapping_Γ ...) t))
-   (types (mapping_Γ ... (val id t_simpl)) (d_s ...) (mapping_t ...))
-   (side-condition (not-in-Γ (mapping_Γ ...) id))
-   ------------------------------------------- ;(type of oc w/ untyped val decl)
-  (types (mapping_Γ ...) ((val id e) d_s ...) (mapping_t ... (val id t_simpl)))]
+  [(types Γ e t)
+   (where Γ_new (extend Γ (val id t)))
+   (types Γ_new (d_s ...) intft)
+   (where intft_new (extend intft (val id t)))
+   -------------------------------------------      ; (oc starting with vd)
+   (types Γ ((val id e) d_s ...) intft_new)]
   
-  [(where t_simpl (eval-type (mapping_Γ ...) t))
-   (types (mapping_Γ ... (type id t_simpl)) (d_s ...) intft)
-   (side-condition (not-in-Γ (mapping_Γ ...) id))
-   ------------------------------------------- ;(type of oc w/ type decl)
-   (types (mapping_Γ ...) ((type id t) d_s ...) intft)]
+  [(where t_simpl (eval-type Γ t))
+   (where Γ_new (extend Γ (type id t_simpl)))
+   (types Γ_new (d_s ...) intft)
+   ------------------------------------------       ; (oc starting with td)
+   (types Γ ((type id t) d_s ...) intft)]
   
-  [(types Γ e [mapping_before ... (val id t) mapping_after ...])   
-   ------------------------------------------------------------- ; (e.id)
+  [(types Γ e [mapping_i ... 
+               (val id t) 
+               mapping_j ...])
+   ---------------------------                      ; (e.id)
    (types Γ (sel e id) t)]
   
   [(types Γ e t)
-   --------------------------- ; (new cell)
+   ---------------------------                      ; (new cell)
    (types Γ (cell e) (var t))]
   
   [(types Γ e (var t))
-   ---------------------------------- ; (cell.get)
+   ----------------------------------               ; (cell.get)
    (types Γ (sel e get) (→ Void t))]
   
   [(types Γ e (var t))
-   ---------------------------------- ; (cell.set)
+   ----------------------------------               ; (cell.set)
    (types Γ (sel e set) (→ t Void))]
     
   [(types Γ e_1 Int)
    (types Γ e_2 Int)
-   -------------------------- ; (integer addition)
+   --------------------------                       ; (integer addition)
    (types Γ (+ e_1 e_2) Int)]
   
   [(types Γ e_1 Int)
    (types Γ e_2 Str)
-   -------------------------- ; (concat Int and Str to Str)
+   --------------------------                       ; (concat Int + Str to Str)
    (types Γ (+ e_1 e_2) Str)]
  
   [(types Γ e_1 Str)
    (types Γ e_2 Int)
-   -------------------------- ; (concat Str and Int to Str)
+   --------------------------                       ; (concat Str + Int to Str)
    (types Γ (+ e_1 e_2) Str)]
   
   [(types Γ e_1 Str)
    (types Γ e_2 Str)
-   -------------------------- ; (concat two strings)
+   --------------------------                       ; (concat two strings)
    (types Γ (+ e_1 e_2) Str)]
   
   [(types Γ e_1 Str)
    (types Γ e_2 Str)
-   -------------------------- ; (String equality)
+   ----------------------------                     ; (String equality)
    (types Γ (== e_1 e_2) Bool)]
   
   [(types Γ e_1 Bool)
    (types Γ e_2 Bool)
-   -------------------------- ; (Bool equality)
+   ----------------------------                     ; (Bool equality)
    (types Γ (== e_1 e_2) Bool)]
   
   [(types Γ e_1 Int)
    (types Γ e_2 Int)
-   -------------------------- ; (Int equality)
+   ----------------------------                     ; (Int equality)
    (types Γ (== e_1 e_2) Bool)]
   
   ; Note: for equality on objects, define an equals method (as in Java)
@@ -365,22 +379,22 @@
   
   [(types Γ e_1 Int)
    (types Γ e_2 Int)
-   -------------------------- ; (Int <)
+   ---------------------------                      ; (Int <)
    (types Γ (< e_1 e_2) Bool)]
   
   [(types Γ e_1 Int)
    (types Γ e_2 Int)
-   -------------------------- ; (Int subtraction)
+   --------------------------                       ; (Int subtraction)
    (types Γ (- e_1 e_2) Int)]
   
   [(types Γ e_1 Int)
    (types Γ e_2 Int)
-   -------------------------- ; (Int multiplication)
+   --------------------------                       ; (Int multiplication)
    (types Γ (* e_1 e_2) Int)]
   
   [(types Γ e_1 Int)
    (types Γ e_2 Int)
-   -------------------------- ; (Int division)
+   --------------------------                       ; (Int division)
    (types Γ (/ e_1 e_2) Int)]
   
 )
@@ -454,15 +468,6 @@
    (judgment-holds (sub t_2 t_1))]
   [(types-equal t_1 t_2) #f]
 )
-
-#|unused
-; (wf-t Γ t) rejects e.g. bad type intersections
-(define-judgment-form L
-  #:mode (wf-t I I)
-  #:contract (wf-t Γ t)
-  [(wf-t Γ t)
-   (where t_2 (eval-type Γ t))]
-)|#
 
 ; (eval-type Γ t) evaluates a type expression t in environment Γ
 (define-metafunction L
