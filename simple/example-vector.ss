@@ -20,13 +20,15 @@
          (val at (→ Int (var Int)))
          (val pushBack (→ Int Void))
       ])
-      (val newVector (↦ (v Void) (
+      (val newVector (↦ (v0 Void) (
          (val fSize (cell 0))
          (val e0 (cell 0))
          (val e1 (cell 0))
          (val e2 (cell 0))
          (val e3 (cell 0))
          
+         ; note that v != v0, otherwise it wouldn't type because shadowing
+         ; is not allowed
          (val size (↦ (v Void) ((sel fSize get) void)))
          (val maxSize 4)
          (val empty (↦ (v Void) (== 0 ((sel fSize get) void))))

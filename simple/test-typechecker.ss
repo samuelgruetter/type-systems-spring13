@@ -6,6 +6,74 @@
 (define (test-types-equal t1 t2 b)
   (test-equal (term (types-equal ,t1 ,t2)) b))
 
+(test-equal (judgment-holds 
+  (types {(val f (→ Int Str)) (val x Int)} (f x) Str)) #t)
+(test-equal (judgment-holds 
+  (types {(val f (→ Int Str)) (val x Int)} (f x) Int)) #f)
+(test-equal (judgment-holds 
+  (types {} (↦ (v Int) v) (→ Int Int))) #t)
+(test-equal (judgment-holds 
+  (types {} (↦ (v Int) (+ v "foo")) (→ Int Str))) #t)
+(test-equal (judgment-holds 
+  (types {} (↦ (v Int) v) (→ Int Str))) #f)
+(test-equal (judgment-holds 
+  (types {} ((↦ (v Int) v) 7) Int)) #t)
+(test-equal (judgment-holds 
+  (types {} (↦ (v Int) v) Bool)) #f)
+(test-equal (judgment-holds
+  (types-as (if true ((val a 3)) ((val a 3) (val b 4))) [(val a Int)])) #t)
+(test-equal (judgment-holds
+  (types {} {(val a 5) (+ a 4)} Int)) #t)
+(test-equal (judgment-holds
+  (types {} {(val a 5) (val b 5)} Int)) #f)
+(test-equal (judgment-holds
+  (types {(val f (→ Int Void))} {(ign (f 4)) (val a 5) (+ a 4)} Int)) #t)
+(test-equal (judgment-holds
+  (types {(val f (→ Int Void))} {(ign (f 4)) (val a 5) (f 8)} Void)) #t)
+(test-equal (judgment-holds
+  (types {(val f (→ Int Void))} {(ign (f 4)) (val a 5) (f void)} Void)) #f)
+(test-equal (judgment-holds
+  (types {} {(val f (↦ (v Int) v)) (f 4)} Int)) #t)
+(test-equal (judgment-holds
+  (types {(type T1 Int)} {(val f (↦ (v T1) v)) (f 4)} Int)) #t)
+(test-equal (judgment-holds
+  (types {} {(type T1 Int) (val f (↦ (v T1) v)) (f 4)} Int)) #t)
+(test-equal (judgment-holds
+  (types {} {(type T1 Int) (val f (↦ (v T1) (+ v 1))) (f 4)} Int)) #t)
+(test-equal (judgment-holds
+  (types {} {(type T1 Str) (val f (↦ (v T1) (+ v 1))) (f 4)} Int)) #f)
+(test-equal (judgment-holds
+  (types-as ((val a 4) (val c "hi")) [(val c Str) (val a Int)])) #t)
+(test-equal (judgment-holds
+  (types-as ((val a 4) (val c "hi")) [(val a Int) (val c Str)])) #t)
+(test-equal (judgment-holds
+  (types-as ((val a 4) (val c "hi")) [(val a Int)])) #t)
+(test-equal (judgment-holds
+  (types-as ((val a 4) (val c "hi")) [(val a Int) (val c Int)])) #f)
+(test-equal (judgment-holds
+  (types {(type MyStr Str)} (↦ (v MyStr) v) (→ Str Str))) #t)
+(test-equal (judgment-holds
+  (types-as ((type MyStr Str) (val f (↦ (v MyStr) v)) (val s (f "")))
+            [(val f (→ Str Str)) (val s Str)])) #t)
+(test-equal (judgment-holds
+  (types-as ((type MyStr Str) (val f (↦ (v MyStr) v)) (val s (f 1)))
+            [(val f (→ Str Str)) (val s Str)])) #f)
+(test-equal (judgment-holds
+  (types-as (cell 0) (var Int))) #t)
+(test-equal (judgment-holds
+  (types-as (sel (cell 3) get) (→ Void Int))) #t)
+(test-equal (judgment-holds
+  (types-as (sel (cell 3) set) (→ Int Void))) #t)
+(test-equal (judgment-holds
+  (types-as ((val fSize (cell 0))
+             (val size (↦ (v Void) ((sel fSize get) void))))
+            [(val fSize (var Int))
+             (val size (→ Void Int))])) #t)
+(test-equal (judgment-holds
+  (types-as {(type T1 Str) (type T2 T1) (↦ (a T2) a)} (→ Str Str))) #t)
+(test-equal (judgment-holds
+  (types-as {(type T1 Str) (type T2 T1) (↦ (a T2) a)} (→ Int Str))) #f)
+
 (test-types-equal (term Str) (term Str) #t)
 (test-types-equal (term Int) (term Str) #f)
 (test-types-equal (term Str) (term Int) #f)

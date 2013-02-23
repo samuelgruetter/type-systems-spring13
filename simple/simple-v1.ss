@@ -255,9 +255,11 @@
    --------------------------------                 ; (function application)
    (types Γ (e_fun e_arg) t_ret)]
  
-  [(types (extend Γ (val id t_1)) e t_2)
-   ----------------------------------------         ; (type of anon func)
-   (types Γ (↦ (id t_1) e) (→ t_1 t_2))]
+  [(where t_1_simpl (eval-type Γ t_1))
+   (where Γ_new (extend Γ (val id t_1_simpl)))
+   (types Γ_new e t_2)
+   -------------------------------------------      ; (type of anon func)
+   (types Γ (↦ (id t_1) e) (→ t_1_simpl t_2))]
   
   [(where (mapping_i ... (val id t) mapping_j ...) Γ)
    ------------------------------------------------ ; (lookup)
