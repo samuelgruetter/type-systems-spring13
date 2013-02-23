@@ -73,6 +73,8 @@
   (types-as {(type T1 Str) (type T2 T1) (↦ (a T2) a)} (→ Str Str))) #t)
 (test-equal (judgment-holds
   (types-as {(type T1 Str) (type T2 T1) (↦ (a T2) a)} (→ Int Str))) #f)
+(test-equal (judgment-holds
+  (types {} {(val f (↦ (n Int) n)) n} Int)) #f)
 
 (test-types-equal (term Str) (term Str) #t)
 (test-types-equal (term Int) (term Str) #f)
